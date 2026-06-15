@@ -63,7 +63,8 @@ export default function ArchitectureDiagram({ activeTab, analyzedData }) {
     try {
       if (activeTab === "aiTarget") {
         // Fetch AI nodes & edges from backend route
-        fetch("/api/architecture/diagram-data")
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
+        fetch(`${baseUrl}/api/architecture/diagram-data`)
           .then((res) => {
             if (!res.ok) throw new Error("Backend unavailable");
             return res.json();

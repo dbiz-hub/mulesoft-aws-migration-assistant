@@ -203,10 +203,15 @@ export default function App() {
   useEffect(() => { localStorage.setItem("gemini_api_key", geminiApiKey); }, [geminiApiKey]);
   useEffect(() => { localStorage.setItem("gemini_model", geminiModel); }, [geminiModel]);
 
+  useEffect(() => {
+    console.log("API_BASE_URL", import.meta.env.VITE_API_BASE_URL);
+  }, []);
+
   // Periodic health check
   const checkHealth = async () => {
     try {
-      const response = await fetch("/api/health");
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
+      const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
@@ -239,7 +244,9 @@ export default function App() {
 
   // safeFetch Content-Type check wrapper
   const safeFetch = async (url, options = {}) => {
-    const response = await fetch(url, options);
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
+    const fullUrl = url.startsWith("/api") ? `${baseUrl}${url}` : url;
+    const response = await fetch(fullUrl, options);
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
       const rawText = await response.text();

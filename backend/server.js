@@ -5,8 +5,12 @@ import path from "path";
 import fs from "fs";
 import AdmZip from "adm-zip";
 import dotenv from "dotenv";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 import { 
   checkGithubConnection, 
@@ -647,6 +651,22 @@ app.use('/api', (req, res) => {
     message: `API route not found: ${req.originalUrl}`
   });
 });
+
+// Serve static frontend files in production
+const frontendDistPath = path.resolve(__dirname, "../frontend/dist");
+if (fs.existsSync(frontendDistPath)) {
+  console.log(`[Production] Serving static files from: ${frontendDistPath}`);
+  app.use(express.static(frontendDistPath));
+  app.get("*", (req, res, next) => {
+    // If request starts with /api, pass it to next handlers (e.g. 404)
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+} else {
+  console.log(`[Development] Static files folder not found at: ${frontendDistPath}. Running API-only server.`);
+}
 
 // Start Express server
 app.listen(PORT, () => {
