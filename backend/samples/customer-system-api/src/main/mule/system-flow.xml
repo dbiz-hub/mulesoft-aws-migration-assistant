@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/anypoint-mq http://www.mulesoft.org/schema/mule/anypoint-mq/current/mule-anypoint-mq.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	
+	<http:listener-config name="HTTP_Listener_System" doc:name="HTTP Listener config" >
+		<http:listener-connection host="0.0.0.0" port="${http.port}" />
+	</http:listener-config>
+	
+	<db:config name="Database_Config" doc:name="Database Config" >
+		<db:mysql-connection host="${db.host}" port="${db.port}" user="${db.user}" password="${db.password}" database="${db.database}" />
+	</db:config>
+	
+	<anypoint-mq:config name="Anypoint_MQ_Config" doc:name="Anypoint MQ Config" >
+		<anypoint-mq:connection url="${mq.url}" clientId="${mq.client-id}" clientSecret="${mq.client-secret}" />
+	</anypoint-mq:config>
+	
+	<flow name="get-customer-system-flow" doc:id="f-301" >
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_System" path="/api/system/customers/{id}" allowedMethods="GET"/>
+		<logger level="INFO" doc:name="Db Query Log" message="Querying Database for customer: #[attributes.uriParams.id]" />
+		<db:select doc:name="Select Customer" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT id, first_name as firstName, last_name as lastName, email as emailAddress, phone as phoneNumber, street, city, state, postal_code as postalCode, country, status, annual_spend as annualSpend FROM customers WHERE id = :id]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{"id": attributes.uriParams.id}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Check DB Record Found" >
+			<when expression="#[sizeOf(payload) &gt; 0]">
+				<set-payload value="#[payload[0]]" doc:name="Extract First Record" />
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise Error" type="CUSTOMER:NOT_FOUND" description="Customer database record was not found."/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" type="CUSTOMER:NOT_FOUND">
+				<logger level="WARN" doc:name="Log NotFound" message="Customer record not found" />
+			</on-error-propagate>
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" type="ANY">
+				<logger level="ERROR" doc:name="Log Db Error" message="Database system error: #[error.description]" />
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	
+	<flow name="sync-inactive-customers-scheduler" doc:id="f-302" >
+		<scheduler doc:name="Daily Scheduler" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="1" timeUnit="DAYS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="Scheduler Triggered Log" message="Syncing inactive customers scheduler triggered" />
+		<db:select doc:name="Select Inactive Customers" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT id, email FROM customers WHERE status = 'INACTIVE']]></db:sql>
+		</db:select>
+		<foreach doc:name="For Each Inactive Customer" >
+			<logger level="INFO" doc:name="Publish Queue Log" message="Publishing sync event to Queue for customer: #[payload.id]" />
+			<anypoint-mq:publish doc:name="Publish Sync Event" config-ref="Anypoint_MQ_Config" destination="customer-sync-queue"/>
+		</foreach>
+	</flow>
+</mule>

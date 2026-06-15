@@ -1,0 +1,9 @@
+http:
+  port: "8082"
+  host: "0.0.0.0"
+system:
+  api:
+    host: "customer-system-api.internal"
+    port: "8083"
+cache:
+  ttl-seconds: "3600"

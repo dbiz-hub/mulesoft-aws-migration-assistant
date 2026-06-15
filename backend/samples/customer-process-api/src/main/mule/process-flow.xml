@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	
+	<http:listener-config name="HTTP_Listener_Process" doc:name="HTTP Listener config" >
+		<http:listener-connection host="0.0.0.0" port="${http.port}" />
+	</http:listener-config>
+	
+	<http:request-config name="HTTP_Request_System_API" doc:name="HTTP Request configuration" >
+		<http:request-connection host="${system.api.host}" port="${system.api.port}" />
+	</http:request-config>
+	
+	<os:object-store name="Customer_Cache_Store" doc:name="Object store" />
+	
+	<flow name="customer-process-flow" doc:id="f-201" >
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_Process" path="/api/process/customers/{id}" allowedMethods="GET"/>
+		<set-variable value="#[attributes.uriParams.id]" doc:name="Set CustomerId" variableName="customerId"/>
+		<os:contains doc:name="Check Cache" key="#[vars.customerId]" objectStore="Customer_Cache_Store" target="cacheExists"/>
+		<choice doc:name="Choice" >
+			<when expression="#[vars.cacheExists == true]">
+				<logger level="INFO" doc:name="Cache Hit Log" message="Fetching customer data from Object Store cache for ID: #[vars.customerId]" />
+				<os:retrieve doc:name="Retrieve from Cache" key="#[vars.customerId]" objectStore="Customer_Cache_Store"/>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Cache Miss Log" message="Cache miss. Calling System API for customer ID: #[vars.customerId]" />
+				<http:request method="GET" doc:name="Call System API DB" config-ref="HTTP_Request_System_API" path="/api/system/customers/{id}">
+					<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"id" : vars.customerId
+}]]]></http:uri-params>
+				</http:request>
+				<os:store doc:name="Store in Cache" key="#[vars.customerId]" objectStore="Customer_Cache_Store"/>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Enrich Customer Payload" >
+			<ee:message >
+				<ee:set-payload resource="dwl/enrich-customer-data.dwl" />
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

@@ -1,0 +1,10 @@
+http:
+  port: "8081"
+  host: "0.0.0.0"
+process:
+  api:
+    host: "customer-process-api.internal"
+    port: "8082"
+security:
+  token-validate: "true"
+  policy: "client-id-enforcement"

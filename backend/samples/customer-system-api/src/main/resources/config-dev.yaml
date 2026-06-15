@@ -1,0 +1,13 @@
+http:
+  port: "8083"
+  host: "0.0.0.0"
+db:
+  host: "customer-db.internal"
+  port: "3306"
+  user: "admin"
+  password: "encrypted:DB_PASSWORD_123"
+  database: "customer_db"
+mq:
+  url: "https://mq-us-east-1.anypoint.mulesoft.com/api/v1"
+  client-id: "mq_client_abc123"
+  client-secret: "mq_secret_xyz789"

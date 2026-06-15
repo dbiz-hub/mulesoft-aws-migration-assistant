@@ -1,0 +1,51 @@
+#%RAML 1.0
+title: Customer Experience API
+version: v1
+baseUri: http://localhost:8081/api
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+        required: true
+      client_secret:
+        type: string
+        required: true
+
+/customers:
+  /{id}:
+    is: [client-id-required]
+    get:
+      description: Get detailed customer profile by customer ID
+      responses:
+        200:
+          body:
+            application/json:
+              example: |
+                {
+                  "status": "SUCCESS",
+                  "timestamp": "2026-06-11T12:00:00Z",
+                  "data": {
+                    "customerId": "C-10029",
+                    "fullName": "Jane Doe",
+                    "contact": {
+                      "email": "jane.doe@example.com",
+                      "phone": "+1-555-0199"
+                    },
+                    "location": {
+                      "city": "San Francisco",
+                      "country": "USA"
+                    },
+                    "tier": "GOLD",
+                    "active": true
+                  }
+                }
+        404:
+          body:
+            application/json:
+              example: |
+                {
+                  "status": "ERROR",
+                  "message": "Customer not found"
+                }

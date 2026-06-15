@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1c2333;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2b354a;
+}
+
+/* Glassmorphism styling */
+.glass-panel {
+  background: rgba(14, 19, 31, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-mule {
+  background: rgba(0, 162, 223, 0.02);
+  border: 1px solid rgba(0, 162, 223, 0.15);
+}
+
+.glass-aws {
+  background: rgba(255, 153, 0, 0.02);
+  border: 1px solid rgba(255, 153, 0, 0.15);
+}
+
+.glass-card {
+  background: rgba(28, 35, 51, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(28, 35, 51, 0.6);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Custom glow utility hooks */
+.glow-text-mule {
+  text-shadow: 0 0 10px rgba(0, 162, 223, 0.5);
+}
+
+.glow-text-aws {
+  text-shadow: 0 0 10px rgba(255, 153, 0, 0.5);
+}
+
+/* Scanline emulation for console */
+@keyframes scanline {
+  0% { top: 0%; }
+  100% { top: 100%; }
+}
+.scanline::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 2;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
+}
+
+.scanline::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: rgba(18, 16, 16, 0.1);
+  opacity: 0;
+  z-index: 2;
+  pointer-events: none;
+  animation: scanline 8s linear infinite;
+}
