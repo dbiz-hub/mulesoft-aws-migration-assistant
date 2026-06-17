@@ -131,54 +131,77 @@ app.post("/api/github/repos", async (req, res) => {
 
 // 3. Load Repository content and run Parser
 app.post("/api/github/load-repo", async (req, res) => {
-  const { token, repoUrl, useMock, mockRepoName } = req.body;
+  const { token, repoUrl, repoUrls, useMock, mockRepoName, mockRepoNames } = req.body;
 
   try {
-    let repoName = mockRepoName;
+    let repoName = "";
     let fileContents = {};
     let fileList = [];
 
     if (useMock) {
-      console.log(`Loading local mock repository: ${mockRepoName}`);
-      const mockRepo = await loadMockLocalRepo(mockRepoName);
-      repoName = mockRepo.name;
-      fileContents = mockRepo.contents;
-      fileList = mockRepo.files;
-    } else {
-      if (!token || !repoUrl) {
-        return res.status(400).json({ error: "Token and Repository URL are required for real clone" });
+      const names = Array.isArray(mockRepoNames) ? mockRepoNames : (mockRepoName ? [mockRepoName] : []);
+      if (names.length === 0) {
+        return res.status(400).json({ error: "At least one mock repo name is required" });
       }
 
-      const info = parseGithubUrl(repoUrl);
-      if (!info) {
-        return res.status(400).json({ error: "Invalid GitHub Repository URL" });
-      }
+      console.log(`Loading local mock repositories: ${names.join(", ")}`);
+      repoName = names.length > 1 ? "combined-mock-apis" : names[0];
       
-      repoName = info.repo;
-      console.log(`Cloning file tree from real GitHub repo: ${info.owner}/${info.repo}`);
-      const tree = await fetchGithubRepoTree(token, info.owner, info.repo);
-      
-      // Filter tree for files we care about (XML, dwl, raml, properties, yaml, yml)
-      const allowedExtensions = [".xml", ".dwl", ".raml", ".properties", ".yaml", ".yml", ".json"];
-      const filesToFetch = tree.filter(node => 
-        node.type === "file" && 
-        allowedExtensions.some(ext => node.path.toLowerCase().endsWith(ext))
-      );
-
-      console.log(`Fetching contents for ${filesToFetch.length} matched codebase files...`);
-      for (const node of filesToFetch) {
-        try {
-          const content = await fetchGithubFileContent(token, info.owner, info.repo, node.path);
-          fileContents[node.path] = content;
+      for (const name of names) {
+        const mockRepo = await loadMockLocalRepo(name);
+        for (const [filePath, content] of Object.entries(mockRepo.contents)) {
+          const prefixedPath = names.length > 1 ? `${name}/${filePath}` : filePath;
+          fileContents[prefixedPath] = content;
+        }
+        for (const file of mockRepo.files) {
+          const prefixedPath = names.length > 1 ? `${name}/${file.path}` : file.path;
           fileList.push({
-            path: node.path,
-            type: "file",
-            size: node.size
+            path: prefixedPath,
+            type: file.type,
+            size: file.size
           });
-        } catch (fileErr) {
-          console.warn(`Skipping file ${node.path} due to fetch error:`, fileErr.message);
         }
       }
+    } else {
+      const urls = Array.isArray(repoUrls) ? repoUrls : (repoUrl ? [repoUrl] : []);
+      if (urls.length === 0) {
+        return res.status(400).json({ error: "At least one Repository URL is required for real clone" });
+      }
+
+      const mergedNames = [];
+      for (const url of urls) {
+        const info = parseGithubUrl(url);
+        if (!info) {
+          return res.status(400).json({ error: `Invalid GitHub Repository URL: ${url}` });
+        }
+        mergedNames.push(info.repo);
+        
+        console.log(`Cloning file tree from real GitHub repo: ${info.owner}/${info.repo}`);
+        const tree = await fetchGithubRepoTree(token, info.owner, info.repo);
+        
+        const allowedExtensions = [".xml", ".dwl", ".raml", ".properties", ".yaml", ".yml", ".json"];
+        const filesToFetch = tree.filter(node => 
+          node.type === "file" && 
+          allowedExtensions.some(ext => node.path.toLowerCase().endsWith(ext))
+        );
+
+        console.log(`Fetching contents for ${filesToFetch.length} matched codebase files in ${info.repo}...`);
+        for (const node of filesToFetch) {
+          try {
+            const content = await fetchGithubFileContent(token, info.owner, info.repo, node.path);
+            const prefixedPath = urls.length > 1 ? `${info.repo}/${node.path}` : node.path;
+            fileContents[prefixedPath] = content;
+            fileList.push({
+              path: prefixedPath,
+              type: "file",
+              size: node.size
+            });
+          } catch (fileErr) {
+            console.warn(`Skipping file ${node.path} due to fetch error:`, fileErr.message);
+          }
+        }
+      }
+      repoName = urls.length > 1 ? "combined-github-repos" : mergedNames[0];
     }
 
     if (Object.keys(fileContents).length === 0) {

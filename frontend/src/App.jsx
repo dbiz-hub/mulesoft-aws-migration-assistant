@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   Database, GitFork, Github, Upload, Layers, Cpu, FileText, CheckCircle2, 
   Terminal, ShieldAlert, ArrowRight, Play, Check, ChevronRight, Download, 
-  Folder, File, Settings, AlertCircle, RefreshCw, Eye, Code, Server, HelpCircle
+  Folder, File, Settings, AlertCircle, RefreshCw, Eye, Code, Server, HelpCircle, FolderOpen, Globe, Link, FileCode
 } from "lucide-react";
 import mermaid from "mermaid";
 
@@ -151,6 +151,7 @@ const generateSafeBlueprintWithoutAi = (projectName, analyzedData) => {
 export default function App() {
   // Navigation State
   const [activeScreen, setActiveScreen] = useState("dashboard");
+  const [showAnalysisSource, setShowAnalysisSource] = useState(false);
 
   // GitHub / Upload State
   const [githubToken, setGithubToken] = useState("");
@@ -195,6 +196,7 @@ export default function App() {
   const [backendHealth, setBackendHealth] = useState("checking");
   const [aiRequestStatus, setAiRequestStatus] = useState("idle"); // idle, running, completed, failed
   const [reportData, setReportData] = useState(null);
+  const [selectedRealRepos, setSelectedRealRepos] = useState([]);
 
   // Sync settings to localStorage
   useEffect(() => { localStorage.setItem("ai_provider", aiProvider); }, [aiProvider]);
@@ -418,7 +420,7 @@ export default function App() {
   };
 
   // Load Mock repository
-  const handleLoadMock = async (mockRepoName) => {
+  const handleLoadMock = async (mockRepoNameOrNames) => {
     setIsLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -429,10 +431,17 @@ export default function App() {
     setWarningMsg("");
     
     try {
+      const payload = { useMock: true };
+      if (Array.isArray(mockRepoNameOrNames)) {
+        payload.mockRepoNames = mockRepoNameOrNames;
+      } else {
+        payload.mockRepoName = mockRepoNameOrNames;
+      }
+
       const response = await safeFetch("/api/github/load-repo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ useMock: true, mockRepoName })
+        body: JSON.stringify(payload)
       });
       
       const data = await response.json();
@@ -471,8 +480,8 @@ export default function App() {
   };
 
   // Load Real GitHub repo
-  const handleLoadRealRepo = async (repoUrl) => {
-    if (!githubToken || !repoUrl) return;
+  const handleLoadRealRepo = async (repoUrlOrUrls) => {
+    if (!githubToken || !repoUrlOrUrls || (Array.isArray(repoUrlOrUrls) && repoUrlOrUrls.length === 0)) return;
     setIsLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -483,10 +492,17 @@ export default function App() {
     setWarningMsg("");
 
     try {
+      const payload = { token: githubToken, useMock: false };
+      if (Array.isArray(repoUrlOrUrls)) {
+        payload.repoUrls = repoUrlOrUrls;
+      } else {
+        payload.repoUrl = repoUrlOrUrls;
+      }
+
       const response = await safeFetch("/api/github/load-repo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: githubToken, repoUrl, useMock: false })
+        body: JSON.stringify(payload)
       });
       
       const data = await response.json();
@@ -863,23 +879,51 @@ export default function App() {
                 Explorer
               </button>
               <button 
-                onClick={() => setActiveScreen("analysis")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "analysis" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                onClick={() => setActiveScreen("documentation")}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "documentation" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
-                Analysis
+                Documentation
               </button>
-              <button 
-                onClick={() => setActiveScreen("ai-console")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${activeScreen === "ai-console" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
-              >
-                <span className="text-indigo-400 font-bold">✨</span> AI Console
-              </button>
-              <button 
-                onClick={() => setActiveScreen("blueprint")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "blueprint" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
-              >
-                Blueprint
-              </button>
+              {analyzedData?.isMuleProject !== false && (
+                <>
+                  <button 
+                    onClick={() => setActiveScreen("evidence")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "evidence" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Repository Evidence
+                  </button>
+                  <button 
+                    onClick={() => setActiveScreen("business-view")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "business-view" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Business View
+                  </button>
+                  <button 
+                    onClick={() => setActiveScreen("technical-view")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "technical-view" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Technical View
+                  </button>
+                  <button 
+                    onClick={() => setActiveScreen("blueprint")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "blueprint" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Blueprint
+                  </button>
+                  <button 
+                    onClick={() => setActiveScreen("analysis")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${activeScreen === "analysis" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    Metrics
+                  </button>
+                  <button 
+                    onClick={() => setActiveScreen("ai-console")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${activeScreen === "ai-console" ? "bg-dark-700 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    <span className="text-indigo-400 font-bold">✨</span> AI Console
+                  </button>
+                </>
+              )}
             </>
           )}
 
@@ -1122,18 +1166,42 @@ export default function App() {
 
           {connectedUser && (
             <div className="mt-8 pt-6 border-t border-dark-800">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Available Repositories</h4>
-              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
-                {reposList.map((repo, i) => (
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex justify-between items-center">
+                <span>Available Repositories</span>
+                {selectedRealRepos.length > 0 && (
                   <button 
-                    key={i} 
-                    onClick={() => handleLoadRealRepo(repo.url)}
-                    className="w-full text-left p-2 rounded bg-dark-800/50 border border-dark-700/40 hover:border-mule-500/40 text-xs flex justify-between items-center transition-colors"
+                    onClick={() => handleLoadRealRepo(selectedRealRepos)}
+                    className="bg-mule-500 hover:bg-mule-600 text-white px-2.5 py-1 rounded text-[10px] font-bold transition-all"
                   >
-                    <span className="font-semibold text-slate-300">{repo.name}</span>
-                    <ChevronRight className="w-3 h-3 text-slate-500" />
+                    Load Selected ({selectedRealRepos.length})
                   </button>
-                ))}
+                )}
+              </h4>
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
+                {reposList.map((repo, i) => {
+                  const isSelected = selectedRealRepos.includes(repo.url);
+                  return (
+                    <div 
+                      key={i} 
+                      className={`p-2 rounded bg-dark-800/50 border text-xs flex justify-between items-center cursor-pointer transition-all ${isSelected ? "border-mule-500 bg-mule-500/5" : "border-dark-700/40 hover:border-mule-500/40"}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedRealRepos(prev => prev.filter(url => url !== repo.url));
+                        } else {
+                          setSelectedRealRepos(prev => [...prev, repo.url]);
+                        }
+                      }}
+                    >
+                      <span className="font-semibold text-slate-300">{repo.name}</span>
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => {}} // handled by click
+                        className="rounded border-dark-700 bg-dark-900 text-mule-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1189,6 +1257,19 @@ export default function App() {
                   <p className="text-xs text-slate-500 mt-1">Schedulers, DB SELECT execution, Anypoint MQ publishes.</p>
                 </div>
                 <div className="bg-dark-750 p-2 rounded-lg text-slate-400 group-hover:text-aws-400">
+                  <Play className="w-4 h-4" />
+                </div>
+              </div>
+
+              <div 
+                onClick={() => handleLoadMock(["customer-experience-api", "customer-process-api", "customer-system-api"])}
+                className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/30 hover:border-indigo-500/60 cursor-pointer transition-all flex items-center justify-between group mt-4"
+              >
+                <div>
+                  <h4 className="text-sm font-bold text-indigo-400">Load Combined 3-Tier APIs</h4>
+                  <p className="text-xs text-slate-500 mt-1">Experience API + Process API + System API merged together.</p>
+                </div>
+                <div className="bg-indigo-950 p-2 rounded-lg text-indigo-400 group-hover:bg-indigo-900 transition-colors">
                   <Play className="w-4 h-4" />
                 </div>
               </div>
@@ -1525,6 +1606,55 @@ export default function App() {
           </div>
         </div>
 
+        {/* Debug Pipeline (Show Analysis Source) */}
+        {showAnalysisSource && (
+          <div className="space-y-6 mt-8 p-6 bg-dark-950 border border-indigo-900/40 rounded-2xl animate-fadeIn">
+            <h4 className="text-sm font-bold text-indigo-400 flex items-center gap-2">
+              <Cpu className="w-4 h-4" />
+              Analysis Debug Pipeline (Show Analysis Source)
+            </h4>
+            
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">1. Extracted Metadata</span>
+              <pre className="mt-2 p-3 bg-dark-900 rounded text-[10px] font-mono overflow-auto max-h-48 text-slate-300 select-text">
+                {JSON.stringify(aiData.debug?.extractedMetadata || analyzedData?.evidence || analyzedData, null, 2)}
+              </pre>
+            </div>
+
+            <div className="flex justify-center text-indigo-500 text-lg">↓</div>
+
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">2. AI Prompt</span>
+              <pre className="mt-2 p-3 bg-dark-900 rounded text-[10px] font-mono overflow-auto max-h-48 text-slate-300 whitespace-pre-wrap select-text">
+                {aiData.debug?.aiPrompt || "N/A - Run in static parser mode"}
+              </pre>
+            </div>
+
+            <div className="flex justify-center text-indigo-500 text-lg">↓</div>
+
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">3. Raw AI Response / Rule Output</span>
+              <pre className="mt-2 p-3 bg-dark-900 rounded text-[10px] font-mono overflow-auto max-h-48 text-slate-300 whitespace-pre-wrap select-text">
+                {aiData.debug?.aiResponse || "N/A - Run in static parser mode"}
+              </pre>
+            </div>
+
+            <div className="flex justify-center text-indigo-500 text-lg">↓</div>
+
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">4. Rendered Summary</span>
+              <pre className="mt-2 p-3 bg-dark-900 rounded text-[10px] font-mono overflow-auto max-h-48 text-slate-300 select-text">
+                {JSON.stringify({
+                  executiveSummary: aiData.executiveSummary,
+                  risks: aiData.risks,
+                  recommendations: aiData.recommendations,
+                  businessCapabilities: aiData.businessCapabilities
+                }, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 mt-8">
           <button
             onClick={async () => {
@@ -1703,71 +1833,35 @@ export default function App() {
           </div>
         )}
 
-        {/* Blueprint Tab Selector */}
-        <div className="flex flex-wrap gap-2 mb-6 border-b border-dark-750 pb-3">
-          <button
-            onClick={() => setBlueprintTab("aiTarget")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              blueprintTab === "aiTarget"
-                ? "bg-mule-500 text-white shadow-lg shadow-mule-500/20"
-                : "bg-dark-900/40 hover:bg-dark-900/80 text-slate-400 border border-dark-800"
-            }`}
-          >
-            AWS Target Architecture (AI)
-          </button>
-          <button
-            onClick={() => setBlueprintTab("localTarget")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              blueprintTab === "localTarget"
-                ? "bg-mule-500 text-white shadow-lg shadow-mule-500/20"
-                : "bg-dark-900/40 hover:bg-dark-900/80 text-slate-400 border border-dark-800"
-            }`}
-          >
-            AWS Target Architecture (Local Safe)
-          </button>
-          <button
-            onClick={() => setBlueprintTab("sourceMule")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              blueprintTab === "sourceMule"
-                ? "bg-mule-500 text-white shadow-lg shadow-mule-500/20"
-                : "bg-dark-900/40 hover:bg-dark-900/80 text-slate-400 border border-dark-800"
-            }`}
-          >
-            MuleSoft Source Layering
-          </button>
-          <button
-            onClick={() => setBlueprintTab("migrationFlow")}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              blueprintTab === "migrationFlow"
-                ? "bg-mule-500 text-white shadow-lg shadow-mule-500/20"
-                : "bg-dark-900/40 hover:bg-dark-900/80 text-slate-400 border border-dark-800"
-            }`}
-          >
-            Mule-to-AWS Migration Flow
-          </button>
-        </div>
-
         {summaryText && (
           <div className="mb-6 p-5 bg-indigo-950/20 border border-indigo-900/30 rounded-xl text-slate-300 text-xs leading-relaxed">
             <h4 className="font-bold text-indigo-400 mb-1.5 flex items-center gap-1.5">
-              <span>✨</span> AI-Generated Business Interpretation
+              <span>✨</span> Business Interpretation
             </h4>
             <p>{summaryText}</p>
           </div>
         )}
 
         <div className="space-y-8">
-          {/* Render Active Diagram */}
-          <div className="bg-dark-950/40 p-4 border border-dark-800 rounded-2xl relative">
-            <div className="absolute top-4 right-4 z-10 text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-              {blueprintTab === "aiTarget" && "AI Generated Target Architecture"}
-              {blueprintTab === "localTarget" && "Static Target Architecture Blueprint"}
-              {blueprintTab === "sourceMule" && "Static Source Architecture Blueprint"}
-              {blueprintTab === "migrationFlow" && "Component Migration Flow Mapping"}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Current MuleSoft Architecture */}
+          <div className="bg-dark-900/30 p-6 border border-dark-800 rounded-2xl flex flex-col justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-white mb-1">Current MuleSoft Source Architecture</h4>
+              <p className="text-xs text-slate-500 mb-4">Visualizes the source API-led layering: Client → Experience → Process → System → Backends.</p>
             </div>
-            
-            <ArchitectureDiagram activeTab={blueprintTab} analyzedData={analyzedData} />
+            <ArchitectureDiagram mode="mule" analyzedData={analyzedData} />
           </div>
+
+          {/* Target AWS Architecture */}
+          <div className="bg-dark-900/30 p-6 border border-dark-800 rounded-2xl flex flex-col justify-between">
+            <div>
+              <h4 className="text-sm font-bold text-white mb-1">Target AWS Target Architecture</h4>
+              <p className="text-xs text-slate-500 mb-4">Visualizes the target serverless setup: Client → API Gateway → Lambdas → AWS Services.</p>
+            </div>
+            <ArchitectureDiagram mode="aws" analyzedData={analyzedData} />
+          </div>
+        </div>
           
           {/* API-led layers lists */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1966,23 +2060,31 @@ export default function App() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-dark-700 bg-dark-900/80 text-xs font-bold text-slate-400 uppercase">
-                  <th className="p-4 pl-6">MuleSoft Source Component</th>
-                  <th className="p-4">Type</th>
-                  <th className="p-4">AWS Native Service</th>
-                  <th className="p-4 pr-6">Architecture Rationale</th>
+                  <th className="p-4 pl-6">Source Trigger / Functionality</th>
+                  <th className="p-4">Mule Component</th>
+                  <th className="p-4">Recommended AWS Service</th>
+                  <th className="p-4">Reason</th>
+                  <th className="p-4">Complexity</th>
+                  <th className="p-4 pr-6">Generated Code Artifact</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-800 text-xs text-slate-300">
                 {awsMappings.map((map, i) => (
                   <tr key={i} className="hover:bg-dark-800/30 transition-colors">
-                    <td className="p-4 pl-6 font-bold text-white max-w-[200px] truncate">{map.muleComponent}</td>
+                    <td className="p-4 pl-6 font-bold text-white max-w-[200px] truncate">{map.sourceTrigger || "Internal Invocations"}</td>
+                    <td className="p-4 text-slate-400 font-mono text-[10px]">{map.muleComponent}</td>
+                    <td className="p-4 text-aws-400 font-bold">{map.recommendedAwsService || map.awsService}</td>
+                    <td className="p-4 leading-relaxed text-slate-400 max-w-xs">{map.reason || map.rationale}</td>
                     <td className="p-4">
-                      <span className="bg-dark-700 text-slate-300 border border-dark-600 px-2 py-0.5 rounded font-semibold text-[10px]">
-                        {map.muleType}
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        (map.migrationComplexity || "LOW") === "HIGH" ? "bg-red-950/40 text-red-400 border border-red-900/30" :
+                        (map.migrationComplexity || "LOW") === "MEDIUM" ? "bg-yellow-950/40 text-yellow-400 border border-yellow-900/30" :
+                        "bg-green-950/40 text-green-400 border border-green-900/30"
+                      }`}>
+                        {map.migrationComplexity || "LOW"}
                       </span>
                     </td>
-                    <td className="p-4 text-aws-400 font-bold">{map.awsService}</td>
-                    <td className="p-4 pr-6 leading-relaxed text-slate-400">{map.rationale}</td>
+                    <td className="p-4 pr-6 text-slate-400 font-mono text-[10px]">{map.generatedCodeArtifact || "template.yaml"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -2475,13 +2577,25 @@ Resources:
             </p>
           </div>
 
-          <button
-            onClick={() => handleRunAiAnalysis(fileContents, analyzedData)}
-            className="flex items-center gap-1.5 px-4 py-2 border border-indigo-900/50 hover:border-indigo-800 bg-indigo-950/30 hover:bg-indigo-950/50 text-indigo-400 rounded-lg text-xs font-semibold transition-all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Run AI Analysis</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer bg-dark-850 px-3 py-2 border border-dark-700 rounded-lg text-xs select-none">
+              <input 
+                type="checkbox" 
+                checked={showAnalysisSource} 
+                onChange={(e) => setShowAnalysisSource(e.target.checked)} 
+                className="accent-indigo-500 rounded cursor-pointer"
+              />
+              <span className="text-slate-300 font-semibold">Show Analysis Source</span>
+            </label>
+
+            <button
+              onClick={() => handleRunAiAnalysis(fileContents, analyzedData)}
+              className="flex items-center gap-1.5 px-4 py-2 border border-indigo-900/50 hover:border-indigo-800 bg-indigo-950/30 hover:bg-indigo-950/50 text-indigo-400 rounded-lg text-xs font-semibold transition-all"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Run AI Analysis</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Stats Grid */}
@@ -2973,6 +3087,604 @@ Resources:
   };
 
   // ----------------------------------------------------
+  // New Screens for Business, Technical, and Documentation Views
+  // ----------------------------------------------------
+  const renderBusinessViewScreen = () => {
+    if (!analyzedData) {
+      return (
+        <div className="max-w-4xl mx-auto py-12 px-6 text-center text-slate-500">
+          <AlertCircle className="w-12 h-12 mx-auto mb-2 text-slate-600" />
+          <p className="text-sm font-semibold">No project analyzed</p>
+          <p className="text-xs text-slate-400 mt-1">Please load a project first from the Connect screen.</p>
+        </div>
+      );
+    }
+
+    const businessCaps = aiAnalysisData?.businessCapabilities || [
+      { capability: "REST API Exposure", description: "Exposes HTTP endpoints to receive incoming transactions from external channels." },
+      { capability: "Data Transformation & Translation", description: "Translates hierarchical XML request models to normalized schemas." },
+      { capability: "Process Orchestration", description: "Handles sequential calls, caching queries, and conditional branching logic." }
+    ];
+
+    // Determine triggers for each flow
+    const businessFlows = (analyzedData.flows || []).map(flow => {
+      const hasHttp = flow.processors.some(p => p.type === 'http-listener');
+      const hasSched = flow.processors.some(p => p.type === 'scheduler');
+      const hasMq = flow.processors.some(p => p.type.includes('mq') || flow.name.toLowerCase().includes('queue') || flow.name.toLowerCase().includes('listener'));
+
+      let triggerType = "Event";
+      let triggerBadge = "bg-emerald-950/40 text-emerald-400 border border-emerald-900/30";
+      if (hasHttp) {
+        triggerType = "HTTP Listener";
+        triggerBadge = "bg-sky-950/40 text-sky-400 border border-sky-900/30";
+      } else if (hasSched) {
+        triggerType = "Scheduler";
+        triggerBadge = "bg-amber-950/40 text-amber-400 border border-amber-900/30";
+      } else if (hasMq) {
+        triggerType = "Queue / MQ";
+        triggerBadge = "bg-purple-950/40 text-purple-400 border border-purple-900/30";
+      }
+
+      // Check downstream calls
+      const calls = [];
+      if (flow.processors.some(p => p.type === 'database')) calls.push("Database Server");
+      if (flow.processors.some(p => p.type === 'http-request')) calls.push("Downstream HTTP API");
+      if (flow.processors.some(p => p.type.includes('mq-publish'))) calls.push("Anypoint MQ Queue");
+      const downstream = calls.join(", ") || "None (internal processing)";
+
+      // Check rules
+      const hasChoice = flow.processors.some(p => p.type === 'choice');
+      const rules = hasChoice ? "Conditional routing logic (Choice)" : "Standard mapping rules";
+
+      // Transformations
+      const transforms = flow.processors.filter(p => p.type === 'transform').map(p => p.resource).join(", ") || "None";
+
+      // AI summary or fallback
+      const aiFlow = aiAnalysisData?.flows?.find(f => f.name === flow.name);
+      const desc = aiFlow?.description || `Processes incoming ${triggerType} events, handles business rules, and performs orchestration.`;
+
+      return {
+        name: flow.name,
+        triggerType,
+        triggerBadge,
+        desc,
+        downstream,
+        rules,
+        transforms
+      };
+    });
+
+    return (
+      <div className="max-w-6xl mx-auto py-12 px-6 animate-fadeIn">
+        <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+          <Layers className="w-6 h-6 text-mule-400" />
+          Business Capability View
+        </h3>
+        <p className="text-xs text-slate-400 mb-8">
+          Discovered business capabilities, exposed endpoints, orchestration rules, and downstream channels.
+        </p>
+
+        {/* Capabilities Grid */}
+        <div className="mb-10">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">Discovered Business Capabilities</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {businessCaps.map((cap, i) => (
+              <div key={i} className="bg-dark-900/40 border border-dark-700/80 p-5 rounded-2xl">
+                <div className="text-sm font-bold text-white mb-2">{cap.capability}</div>
+                <div className="text-xs text-slate-400 leading-relaxed">{cap.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Exposed Functionalities Table */}
+        <div className="border border-dark-700/80 bg-dark-900/30 rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-dark-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Exposed Functionalities & API Matrix</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-dark-950/60 border-b border-dark-800 text-slate-400 font-semibold">
+                  <th className="p-4">Functionality / Flow</th>
+                  <th className="p-4">Trigger Type</th>
+                  <th className="p-4">What It Does (Business logic)</th>
+                  <th className="p-4">Downstream Call</th>
+                  <th className="p-4">Business Rules</th>
+                  <th className="p-4">Data Transformation</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-850">
+                {businessFlows.map((bf, idx) => (
+                  <tr key={idx} className="hover:bg-dark-850/40 transition-colors">
+                    <td className="p-4 font-bold text-slate-200">{bf.name}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bf.triggerBadge}`}>
+                        {bf.triggerType}
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-300 leading-normal max-w-xs">{bf.desc}</td>
+                    <td className="p-4 text-slate-400">{bf.downstream}</td>
+                    <td className="p-4 text-slate-400">{bf.rules}</td>
+                    <td className="p-4 text-slate-400 italic">{bf.transforms}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTechnicalViewScreen = () => {
+    if (!analyzedData) {
+      return (
+        <div className="max-w-4xl mx-auto py-12 px-6 text-center text-slate-500">
+          <AlertCircle className="w-12 h-12 mx-auto mb-2 text-slate-600" />
+          <p className="text-sm font-semibold">No project analyzed</p>
+          <p className="text-xs text-slate-400 mt-1">Please load a project first from the Connect screen.</p>
+        </div>
+      );
+    }
+
+    const files = analyzedData.files || {};
+    const metrics = analyzedData.metrics || {};
+    const properties = analyzedData.properties || {};
+
+    // Analyze processors count
+    let totalLoggers = 0;
+    let totalHttpRequests = 0;
+    let totalDbCalls = 0;
+    let totalOsCalls = 0;
+    let totalMqCalls = 0;
+    let totalSchedulers = 0;
+
+    analyzedData.flows.forEach(f => {
+      f.processors.forEach(p => {
+        if (p.type === 'logger') totalLoggers++;
+        if (p.type === 'http-request') totalHttpRequests++;
+        if (p.type === 'database') totalDbCalls++;
+        if (p.type.startsWith('objectstore-')) totalOsCalls++;
+        if (p.type.startsWith('anypoint-mq') || p.type.startsWith('vm')) totalMqCalls++;
+        if (p.type === 'scheduler') totalSchedulers++;
+      });
+    });
+
+    const technicalMetrics = [
+      { label: "Mule XML Files", value: (files.mule || []).length },
+      { label: "RAML/YAML Spec Files", value: (files.raml || []).length },
+      { label: "DataWeave Scripts", value: (files.dwl || []).length },
+      { label: "Properties Files", value: (files.properties || []).length },
+      { label: "Flows & Subflows", value: (analyzedData.flows || []).length + (analyzedData.subflows || []).length },
+      { label: "Active Connectors", value: (analyzedData.connectors || []).length },
+      { label: "HTTP Request nodes", value: totalHttpRequests },
+      { label: "Object Store nodes", value: totalOsCalls },
+      { label: "Database operations", value: totalDbCalls },
+      { label: "MQ/VM Queue events", value: totalMqCalls },
+      { label: "Schedulers nodes", value: totalSchedulers },
+      { label: "Logger invocations", value: totalLoggers }
+    ];
+
+    return (
+      <div className="max-w-6xl mx-auto py-12 px-6 animate-fadeIn">
+        <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+          <Cpu className="w-6 h-6 text-indigo-400" />
+          Technical Assets & Components
+        </h3>
+        <p className="text-xs text-slate-400 mb-8">
+          Detailed breakdown of code assets, flows, subflows, database integrations, queues, caching layers, and loggers.
+        </p>
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">
+          {technicalMetrics.map((tm, idx) => (
+            <div key={idx} className="bg-dark-900/40 border border-dark-700/80 p-5 rounded-2xl flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{tm.label}</span>
+              <span className="text-2xl font-extrabold text-white mt-2">{tm.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Active Connectors */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Active Mule Connectors</h4>
+            <div className="flex flex-wrap gap-2">
+              {analyzedData.connectors.length > 0 ? (
+                analyzedData.connectors.map((conn, idx) => (
+                  <span key={idx} className="px-3 py-1.5 rounded-lg bg-indigo-950/20 text-indigo-300 border border-indigo-900/30 font-semibold text-xs">
+                    {conn}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-slate-500">No connectors resolved from config.</span>
+              )}
+            </div>
+          </div>
+
+          {/* Properties files config parameters */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Configuration Properties ({Object.keys(properties).length} variables)</h4>
+            <div className="max-h-60 overflow-y-auto pr-2">
+              <div className="space-y-1.5">
+                {Object.keys(properties).length > 0 ? (
+                  Object.entries(properties).map(([key, val], idx) => (
+                    <div key={idx} className="flex justify-between items-center bg-dark-950 p-2 rounded text-[10px] font-mono border border-dark-900">
+                      <span className="text-indigo-400 font-semibold truncate max-w-xs">{key}</span>
+                      <span className="text-slate-300 truncate max-w-xs">{val}</span>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500">No properties loaded from src/main/resources.</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Detailed Flows list */}
+        <div className="border border-dark-700/80 bg-dark-900/30 p-6 rounded-2xl mt-8">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Mule Technical Flows Configuration</h4>
+          <div className="space-y-4">
+            {analyzedData.flows.map((flow, idx) => (
+              <div key={idx} className="bg-dark-950/40 border border-dark-850 p-4 rounded-xl">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-bold text-sm text-slate-200">{flow.name}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${flow.hasErrorHandler ? "bg-red-950/40 text-red-400 border border-red-900/30" : "bg-dark-800 text-slate-500 border border-dark-750"}`}>
+                    Error Handler: {flow.hasErrorHandler ? "YES" : "NO"}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 mb-3">File: {flow.file}</div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {flow.processors.length > 0 ? (
+                    flow.processors.map((proc, i) => (
+                      <span key={i} className="px-2 py-1 rounded text-[10px] font-mono bg-dark-850 text-slate-400 border border-dark-800">
+                        {proc.type} {proc.name !== proc.type ? `(${proc.name})` : ""}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-slate-600">No processors in flow.</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEvidenceScreen = () => {
+    if (!analyzedData) return null;
+
+    const ev = analyzedData.evidence || {};
+    
+    return (
+      <div className="max-w-6xl mx-auto py-12 px-6 animate-fadeIn select-text">
+        <h3 className="text-2xl font-bold mb-2 flex items-center gap-2 text-mule-400">
+          <FolderOpen className="w-6 h-6" />
+          Repository Evidence
+        </h3>
+        <p className="text-xs text-slate-400 mb-8">
+          Static repository analysis showing extracted metadata and source configuration elements. No AI summaries or mappings are displayed here.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Card: Flows & Subflows */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-dark-850 pb-2">
+              <Layers className="w-4 h-4 text-sky-400" />
+              Flows & Subflows Discovered
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Flows (${ev.flows?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.flows && ev.flows.length > 0 ? (
+                    ev.flows.map((f, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">${f}</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No flows discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Subflows (${ev.subflows?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.subflows && ev.subflows.length > 0 ? (
+                    ev.subflows.map((sf, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">${sf}</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No subflows discovered.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: HTTP Listeners & Schedulers */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-dark-850 pb-2">
+              <Globe className="w-4 h-4 text-emerald-400" />
+              Ingress Endpoints & Triggers
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">HTTP Listeners (${ev.httpListeners?.length || 0})</span>
+                <ul className="mt-2 space-y-1.5">
+                  {ev.httpListeners && ev.httpListeners.length > 0 ? (
+                    ev.httpListeners.map((l, i) => (
+                      <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900 flex justify-between">
+                        <span>{l.method} {l.path}</span>
+                        <span className="text-[10px] text-slate-500 font-sans">Config: {l.configRef}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No HTTP listeners discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Schedulers (${ev.schedulers?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.schedulers && ev.schedulers.length > 0 ? (
+                    ev.schedulers.map((s, i) => (
+                      <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900 flex justify-between">
+                        <span>{s.name}</span>
+                        <span className="text-[10px] text-slate-400 font-sans">{s.schedule}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No schedulers discovered.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Connectors & Operations */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-dark-850 pb-2">
+              <Link className="w-4 h-4 text-purple-400" />
+              Connectors & Integrations
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Database Connectors (${ev.databaseConnectors?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.databaseConnectors && ev.databaseConnectors.length > 0 ? (
+                    ev.databaseConnectors.map((c, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">{c.operation} (ref: {c.configRef})</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No database connectors discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Salesforce Connectors (${ev.salesforceConnectors?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.salesforceConnectors && ev.salesforceConnectors.length > 0 ? (
+                    ev.salesforceConnectors.map((sf, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">{sf.operation} (ref: {sf.configRef})</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No Salesforce connectors discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">MQ / VM Messaging Connectors (${ev.mqConnectors?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.mqConnectors && ev.mqConnectors.length > 0 ? (
+                    ev.mqConnectors.map((mq, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">{mq.type}:{mq.operation} (dest: {mq.destination})</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No MQ/VM connectors discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">File / FTP Connectors (${ev.fileConnectors?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.fileConnectors && ev.fileConnectors.length > 0 ? (
+                    ev.fileConnectors.map((f, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">{f.type}:{f.operation} (path: {f.path})</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No file/ftp connectors discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Object Store Usage (${ev.objectStoreUsage?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.objectStoreUsage && ev.objectStoreUsage.length > 0 ? (
+                    ev.objectStoreUsage.map((os, i) => <li key={i} className="text-xs text-slate-300 font-mono bg-dark-950 px-2 py-1.5 rounded border border-dark-900">{os.operation} (key: {os.key})</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No Object Store usage discovered.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Files & Code Assets */}
+          <div className="bg-dark-900/30 border border-dark-700/80 p-6 rounded-2xl">
+            <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2 border-b border-dark-850 pb-2">
+              <FileCode className="w-4 h-4 text-amber-400" />
+              Files & Code Assets
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Mule XML Configurations (${ev.muleXmlFiles?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.muleXmlFiles && ev.muleXmlFiles.length > 0 ? (
+                    ev.muleXmlFiles.map((x, i) => <li key={i} className="text-[11px] text-slate-400 font-mono truncate">{x}</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No XML files discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">DataWeave Files & Transformations (${ev.dataweaves?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.dataweaves && ev.dataweaves.length > 0 ? (
+                    ev.dataweaves.map((dw, i) => (
+                      <li key={i} className="text-[11px] text-slate-300 font-mono">
+                        {dw.resource} <span className="text-[10px] text-slate-500">(flow: {dw.flow})</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No DataWeave scripts discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">RAML / OpenAPI Specs (${ev.ramlFiles?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.ramlFiles && ev.ramlFiles.length > 0 ? (
+                    ev.ramlFiles.map((r, i) => <li key={i} className="text-[11px] text-slate-400 font-mono truncate">{r}</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No spec files discovered.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Properties & YAML Configs (${ev.propertiesFiles?.length || 0})</span>
+                <ul className="mt-2 space-y-1">
+                  {ev.propertiesFiles && ev.propertiesFiles.length > 0 ? (
+                    ev.propertiesFiles.map((p, i) => <li key={i} className="text-[11px] text-slate-400 font-mono truncate">{p}</li>)
+                  ) : (
+                    <li className="text-xs text-slate-500 italic">No properties files discovered.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDocumentationScreen = () => {
+    if (!analyzedData) {
+      return (
+        <div className="max-w-4xl mx-auto py-12 px-6 text-center text-slate-500">
+          <AlertCircle className="w-12 h-12 mx-auto mb-2 text-slate-600" />
+          <p className="text-sm font-semibold">No project analyzed</p>
+          <p className="text-xs text-slate-400 mt-1">Please load a project first from the Connect screen.</p>
+        </div>
+      );
+    }
+
+    // Fallback if reportData is not yet fetched or created
+    const markdownReport = reportData?.reportMarkdown || samFiles["docs/migration-report.md"] || "";
+
+    const triggerGenerateReport = async () => {
+      setIsLoading(true);
+      setAiStatusText("Generating Report...");
+      try {
+        const response = await safeFetch("/api/ai/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            analyzedData,
+            awsMapping: awsMappings.length > 0 ? awsMappings : mapMuleToAws(analyzedData),
+            aiSettings: getAiSettingsPayload()
+          })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setReportData(data);
+          setSamFiles(prev => ({
+            ...prev,
+            "docs/migration-report.md": data.reportMarkdown
+          }));
+          setSuccessMsg("Successfully generated markdown report.");
+        } else {
+          setErrorMsg(data.error || "Failed to generate report");
+        }
+      } catch (err) {
+        setErrorMsg("Failed to generate report: " + err.message);
+      } finally {
+        setIsLoading(false);
+        setAiStatusText("");
+      }
+    };
+
+    const handleDownloadMd = () => {
+      const content = markdownReport || "No report generated.";
+      const blob = new Blob([content], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "mulesoft-aws-migration-report.md";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    return (
+      <div className="max-w-4xl mx-auto py-12 px-6 animate-fadeIn select-text">
+        <div className="flex justify-between items-center mb-6 border-b border-dark-700/60 pb-4">
+          <div>
+            <h3 className="text-2xl font-bold flex items-center gap-2">
+              <FileText className="w-6 h-6 text-purple-400" />
+              Migration Documentation View
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Fully deconstructed migration report formatted in clean GitHub markdown report.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {!markdownReport && (
+              <button
+                onClick={triggerGenerateReport}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Generate Markdown Report</span>
+              </button>
+            )}
+            {markdownReport && (
+              <>
+                <button
+                  onClick={triggerGenerateReport}
+                  className="border border-dark-700 hover:border-dark-600 bg-dark-800 text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Regenerate Report</span>
+                </button>
+                <button
+                  onClick={handleDownloadMd}
+                  className="bg-aws-500 hover:bg-aws-600 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Report (.md)</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {markdownReport ? (
+          <div className="bg-dark-900/40 border border-dark-800 rounded-2xl p-8 max-h-[600px] overflow-y-auto leading-relaxed text-slate-300 select-text">
+            <pre className="whitespace-pre-wrap font-sans text-xs">{markdownReport}</pre>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center p-12 bg-dark-900/20 border border-dark-800 border-dashed rounded-2xl text-center">
+            <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
+            <p className="text-xs font-semibold text-slate-400">Documentation report not yet generated.</p>
+            <p className="text-[10px] text-slate-500 mt-1 max-w-sm mb-4">You can trigger a full structured static/AI deconstruction of the source repository right now.</p>
+            <button
+              onClick={triggerGenerateReport}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Generate Documentation Report</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ----------------------------------------------------
   // Main Router render
   // ----------------------------------------------------
   const renderScreen = () => {
@@ -2983,6 +3695,14 @@ Resources:
         return renderSettingsScreen();
       case "explorer":
         return renderExplorerScreen();
+      case "evidence":
+        return renderEvidenceScreen();
+      case "business-view":
+        return renderBusinessViewScreen();
+      case "technical-view":
+        return renderTechnicalViewScreen();
+      case "documentation":
+        return renderDocumentationScreen();
       case "analysis":
         return renderAnalysisScreen();
       case "ai-console":

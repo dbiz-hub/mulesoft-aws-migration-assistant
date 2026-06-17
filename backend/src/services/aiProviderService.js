@@ -104,65 +104,264 @@ export function resolveProvider(options = {}) {
   }
 }
 
+// Metadata-driven analysis generator to build summaries, risks, and recommendations from evidence
+export function generateMetadataDrivenAnalysis(evidence, metrics) {
+  const flowCount = evidence.flows?.length || 0;
+  const subflowCount = evidence.subflows?.length || 0;
+  const listenerCount = evidence.httpListeners?.length || 0;
+  const schedulerCount = evidence.schedulers?.length || 0;
+  const dwlCount = evidence.dataweaves?.length || 0;
+  const dbCount = evidence.databaseConnectors?.length || 0;
+  const sfCount = evidence.salesforceConnectors?.length || 0;
+  const mqCount = evidence.mqConnectors?.length || 0;
+  const fileCount = evidence.fileConnectors?.length || 0;
+  const osCount = evidence.objectStoreUsage?.length || 0;
+  const errorCount = evidence.errorHandlers?.length || 0;
+
+  // 1. Business Functionality Detection
+  let businessKeywords = [];
+  const allNames = [
+    ...(evidence.flows || []),
+    ...(evidence.subflows || []),
+    ...(evidence.endpoints || []).map(e => e.path),
+    ...(evidence.ramlFiles || [])
+  ].map(n => n.toLowerCase());
+
+  if (allNames.some(n => n.includes("customer") || n.includes("user") || n.includes("account"))) {
+    businessKeywords.push("Customer Management");
+  }
+  if (allNames.some(n => n.includes("order") || n.includes("cart") || n.includes("checkout") || n.includes("validation"))) {
+    businessKeywords.push("Order Processing");
+  }
+  if (allNames.some(n => n.includes("invoice") || n.includes("bill") || n.includes("payment"))) {
+    businessKeywords.push("Invoice & Payments");
+  }
+  if (allNames.some(n => n.includes("notify") || n.includes("email") || n.includes("sms") || n.includes("alert"))) {
+    businessKeywords.push("Notification Service");
+  }
+  if (allNames.some(n => n.includes("product") || n.includes("item") || n.includes("catalog"))) {
+    businessKeywords.push("Catalog Management");
+  }
+  if (allNames.some(n => n.includes("sync") || n.includes("migrate") || n.includes("batch"))) {
+    businessKeywords.push("Data Synchronization");
+  }
+  if (businessKeywords.length === 0) {
+    businessKeywords.push("Generic Integration Services");
+  }
+
+  const primaryFunc = businessKeywords.join(" and ");
+
+  // 2. Build Executive Summary details
+  const parts = [];
+  parts.push(`Repository contains:`);
+  if (flowCount > 0) parts.push(`- ${flowCount} flow${flowCount > 1 ? "s" : ""}`);
+  if (subflowCount > 0) parts.push(`- ${subflowCount} subflow${subflowCount > 1 ? "s" : ""}`);
+  if (listenerCount > 0) parts.push(`- ${listenerCount} HTTP listener${listenerCount > 1 ? "s" : ""}`);
+  if (dwlCount > 0) parts.push(`- ${dwlCount} DataWeave transformation${dwlCount > 1 ? "s" : ""}`);
+  if (schedulerCount > 0) parts.push(`- ${schedulerCount} Scheduler job${schedulerCount > 1 ? "s" : ""}`);
+  if (dbCount > 0) parts.push(`- ${dbCount} Database connector${dbCount > 1 ? "s" : ""}`);
+  if (sfCount > 0) parts.push(`- ${sfCount} Salesforce connector${sfCount > 1 ? "s" : ""}`);
+  if (mqCount > 0) parts.push(`- ${mqCount} MQ/VM message broker interface${mqCount > 1 ? "s" : ""}`);
+  if (fileCount > 0) parts.push(`- ${fileCount} File/FTP transfer channel${fileCount > 1 ? "s" : ""}`);
+  if (osCount > 0) parts.push(`- ${osCount} Object Store cache lookup${osCount > 1 ? "s" : ""}`);
+  if (errorCount > 0) parts.push(`- ${errorCount} Error handler scope${errorCount > 1 ? "s" : ""}`);
+
+  const detailsList = parts.join("\n");
+  
+  // Conditionally recommend target AWS services based strictly on findings
+  const targets = [];
+  if (listenerCount > 0) targets.push("Amazon API Gateway");
+  if (flowCount > 0 || subflowCount > 0) targets.push("AWS Lambda");
+  if (schedulerCount > 0) targets.push("Amazon EventBridge");
+  if (dbCount > 0) targets.push("Amazon RDS/Aurora Serverless");
+  if (sfCount > 0) targets.push("AWS AppFlow / Custom Salesforce client");
+  if (mqCount > 0) targets.push("Amazon SQS / SNS");
+  if (fileCount > 0) targets.push("Amazon S3 / AWS Transfer Family");
+  if (osCount > 0) targets.push("Amazon DynamoDB");
+
+  const targetsText = targets.length > 0 ? `Proposed target architecture employs ${targets.join(", ")}.` : "No AWS target resources suggested.";
+
+  const executiveSummary = `This repository is a MuleSoft integration application focused on ${primaryFunc}.
+
+${detailsList}
+
+${targetsText}
+
+Migration complexity is assessed as ${metrics.complexityScore || "LOW"} because of the presence of ${[
+    listenerCount > 0 ? "HTTP endpoints" : null,
+    schedulerCount > 0 ? "scheduled jobs" : null,
+    dbCount > 0 ? "database transactions" : null,
+    dwlCount > 0 ? "DataWeave mapping logic" : null,
+    mqCount > 0 ? "asynchronous queue messaging" : null
+  ].filter(Boolean).join(", ") || "simple routing modules"}.`;
+
+  // 3. Risks
+  const risks = [];
+  if (dwlCount > 0) {
+    risks.push("DataWeave transformations require JavaScript conversion (Node.js helper modules).");
+  }
+  if (dbCount > 0) {
+    risks.push("Connection pooling redesign required for serverless deployment to prevent Aurora DB exhaustion.");
+  }
+  if (schedulerCount > 0) {
+    risks.push("Scheduled jobs must be migrated to Amazon EventBridge rules to trigger target Lambda runtimes.");
+  }
+  if (mqCount > 0) {
+    risks.push("Asynchronous Anypoint MQ/VM message listeners must be mapped to Amazon SQS event source triggers.");
+  }
+  if (osCount > 0) {
+    risks.push("Mule Object Store lookups need conversion to Amazon DynamoDB key-value caching layers.");
+  }
+  if (sfCount > 0) {
+    risks.push("Salesforce soap/rest connectivity needs replacement using custom AWS Lambda API clients or AWS AppFlow.");
+  }
+  if (fileCount > 0) {
+    risks.push("Local/SFTP file writes must be converted to Amazon S3 uploads or AWS Transfer Family configurations.");
+  }
+  if (errorCount > 0) {
+    risks.push("Flow-level On-Error scopes require translation to JavaScript try-catch frameworks or Lambda DLQs.");
+  }
+
+  // 4. Recommendations
+  const recommendations = [];
+  if (listenerCount > 0) {
+    recommendations.push("API Gateway: Map HTTP Listeners to API Gateway HTTP APIs to proxy incoming REST queries.");
+  }
+  if (flowCount > 0 || subflowCount > 0) {
+    recommendations.push("AWS Lambda: Port flow entry points to Node.js handlers and subflows to shared utility libraries.");
+  }
+  if (schedulerCount > 0) {
+    recommendations.push("EventBridge: Establish EventBridge Schedule rules to invoke Lambda helper execution routines.");
+  }
+  if (dbCount > 0) {
+    recommendations.push("RDS Proxy: Utilize Amazon RDS Proxy to manage connection pooling dynamically from Lambda functions.");
+  }
+  if (mqCount > 0) {
+    recommendations.push("Amazon SQS: Replace queue components with Amazon SQS standard/FIFO message queues.");
+  }
+  if (osCount > 0) {
+    recommendations.push("Amazon DynamoDB: Set up DynamoDB on-demand tables to host fast key-value session cache state.");
+  }
+  if (fileCount > 0) {
+    recommendations.push("Amazon S3: Replace file persistence and FTP drops with Amazon S3 storage buckets.");
+  }
+  if (sfCount > 0) {
+    recommendations.push("AWS AppFlow: Automate CRM syncs utilizing native AWS AppFlow connectors for Salesforce.");
+  }
+
+  return {
+    executiveSummary,
+    risks,
+    recommendations,
+    businessCapabilities: businessKeywords.map(cap => ({
+      capability: cap,
+      description: `Handles orchestration and operational mapping workflows related to ${cap.toLowerCase()} capabilities.`
+    }))
+  };
+}
+
 // 1. Parser Only (Static Analysis Fallback)
 export function parserOnlyAnalyze(files, parsedMetadata) {
+  if (parsedMetadata && parsedMetadata.isMuleProject === false) {
+    return {
+      isMuleProject: false,
+      executiveSummary: "This repository does not appear to be a MuleSoft application.",
+      businessCapabilities: [],
+      apis: [],
+      flows: [],
+      dependencies: [],
+      transformations: [],
+      externalSystems: [],
+      security: [],
+      errorHandling: [],
+      awsMapping: [],
+      risks: [],
+      recommendations: [],
+      migrationComplexity: "LOW",
+      estimatedEffort: "N/A",
+      architectureDiagram: ""
+    };
+  }
+
   const metrics = parsedMetadata?.metrics || {};
   const complexity = metrics?.complexityScore || "LOW";
+  const evidence = parsedMetadata?.evidence || { flows: [], subflows: [], httpListeners: [], dataweaves: [], connectors: [] };
+
+  const derived = generateMetadataDrivenAnalysis(evidence, metrics);
 
   const flows = (parsedMetadata?.flows || []).map(f => {
-    const isListener = f.processors.some(p => p.type === "http-listener");
+    const hasHttp = f.processors.some(p => p.type === "http-listener");
     return {
       name: f.name,
-      description: `Static analysis of MuleSoft flow. Contains ${f.processors.length} processors.`,
+      description: `Discovered flow '${f.name}' containing ${f.processors.length} message processors.`,
       complexity: f.processors.length > 5 ? "MEDIUM" : "LOW",
-      awsMapping: isListener ? `AWS Lambda function triggering on API Gateway route` : `AWS Lambda utility execution`
+      awsMapping: hasHttp ? "Amazon API Gateway + AWS Lambda" : "AWS Lambda (Utility module)"
     };
   });
 
   const apis = (parsedMetadata?.endpoints || []).map(e => ({
     path: e.path,
     method: e.methods.join(", "),
-    description: e.description || "Parsed HTTP listener path",
+    description: e.description || `Exposed path ${e.path}`,
     awsService: "Amazon API Gateway (HTTP API)"
   }));
 
-  const external = (parsedMetadata?.externalSystems || []).map(sys => ({
-    name: sys,
-    type: sys.toLowerCase().includes("database") || sys.toLowerCase().includes("mysql") ? "Database" : "REST API / Downstream System",
-    awsAlternative: sys.toLowerCase().includes("database") ? "Amazon RDS/Aurora Serverless Cluster" : "Amazon EventBridge / HTTP Client"
+  const transformations = (evidence.dataweaves || []).map(dw => ({
+    name: dw.resource,
+    logic: `Data transformation in ${dw.flow || "external module"}`,
+    awsAlternative: "JavaScript map() or JSONata transform inside Lambda"
   }));
 
+  const externalSystemsList = [];
+  if (evidence.databaseConnectors?.length > 0) {
+    externalSystemsList.push({ name: "Relational Database", type: "Database", awsAlternative: "Amazon RDS / Aurora Serverless" });
+  }
+  if (evidence.salesforceConnectors?.length > 0) {
+    externalSystemsList.push({ name: "Salesforce CRM", type: "CRM API", awsAlternative: "AWS AppFlow" });
+  }
+  if (evidence.mqConnectors?.length > 0) {
+    const destinations = Array.from(new Set(evidence.mqConnectors.map(mq => mq.destination).filter(Boolean)));
+    if (destinations.length > 0) {
+      destinations.forEach(dest => {
+        externalSystemsList.push({ name: `Anypoint MQ: ${dest}`, type: "Messaging", awsAlternative: "Amazon SQS Queue" });
+      });
+    } else {
+      externalSystemsList.push({ name: "Messaging Queue", type: "Messaging", awsAlternative: "Amazon SQS Queue" });
+    }
+  }
+  if (evidence.fileConnectors?.length > 0) {
+    externalSystemsList.push({ name: "File System / SFTP Adapter", type: "File Server", awsAlternative: "Amazon S3 Bucket" });
+  }
+  if (evidence.externalEndpoints?.length > 0) {
+    externalSystemsList.push({ name: "Downstream HTTP REST Service", type: "REST API", awsAlternative: "HTTP Client call inside AWS Lambda" });
+  }
+
   const mapping = [];
-  if (parsedMetadata?.connectors?.includes("HTTP Listener")) {
+  if (evidence.connectors?.includes("HTTP Listener")) {
     mapping.push({ muleComponent: "HTTP Listener", muleType: "Connector", awsService: "Amazon API Gateway", rationale: "Exposes HTTP routes to the web" });
   }
-  if (parsedMetadata?.connectors?.includes("Database")) {
+  if (evidence.connectors?.includes("Database")) {
     mapping.push({ muleComponent: "Database Connector", muleType: "Connector", awsService: "Amazon RDS / Aurora Serverless", rationale: "Relational database mapping" });
   }
-  if (parsedMetadata?.connectors?.includes("Anypoint MQ")) {
+  if (evidence.connectors?.includes("Anypoint MQ")) {
     mapping.push({ muleComponent: "Anypoint MQ", muleType: "Connector", awsService: "Amazon SQS", rationale: "Queued async message transport" });
   }
-  if (parsedMetadata?.connectors?.includes("Object Store")) {
+  if (evidence.connectors?.includes("Object Store")) {
     mapping.push({ muleComponent: "Object Store", muleType: "Connector", awsService: "Amazon DynamoDB (Cache)", rationale: "Key-value caching layer" });
   }
 
-  return {
-    executiveSummary: `MuleSoft to AWS Migration Analysis (Parser-Only Mode). Successfully parsed codebase containing ${metrics.totalFlows || 0} flows, ${metrics.totalSubflows || 0} sub-flows, and ${metrics.totalDwlFiles || 0} DataWeave scripts. Assessed complexity: ${complexity}. Target state uses API Gateway proxying stateless Node.js Lambdas with SQS queue asynchronous routing and DynamoDB cache storing.`,
-    businessCapabilities: [
-      { capability: "API Gateway Integration", description: "Handles incoming API contracts and routes requests securely." },
-      { capability: "Data Transformation", description: "Translates XML payloads into standardized JSON representations." }
-    ],
+  const result = {
+    isMuleProject: true,
+    executiveSummary: derived.executiveSummary,
+    businessCapabilities: derived.businessCapabilities,
     apis,
     flows,
     dependencies: [
       { source: "Experience Layer", target: "Process Layer", type: "HTTP", description: "Direct REST call from boundary router to orchestrator." },
-      { source: "Process Layer", target: "System Layer", type: "HTTP", description: "Internal orchestrator requesting base system adapters." },
-      { source: "System Layer", target: "External Systems", type: "Database/Queue", description: "Reads/Writes persisting state to storage grids." }
+      { source: "Process Layer", target: "System Layer", type: "HTTP", description: "Internal orchestrator requesting base system adapters." }
     ],
-    transformations: [
-      { name: "dwl/transformer.dwl", logic: "Translates raw source message into standardized target schema.", awsAlternative: "Node.js JS transform script" }
-    ],
-    externalSystems: external,
+    transformations,
+    externalSystems: externalSystemsList,
     security: [
       { policyName: "Client ID Enforcement", description: "Validates API consumers using client ID & secret headers.", awsMapping: "API Gateway API Keys / Cognito Token validation" }
     ],
@@ -170,19 +369,25 @@ export function parserOnlyAnalyze(files, parsedMetadata) {
       { scope: "Global Error Handler", strategy: "Propagates transaction failure codes upstream", awsMapping: "Lambda standard try-catch blocks returning custom status codes" }
     ],
     awsMapping: mapping,
-    risks: [
-      "Converting complex nested DataWeave arrays map logic can introduce syntax offsets.",
-      "Stateless Lambda connection spikes can exhaust backend relational database pools."
-    ],
-    recommendations: [
-      "Adopt a Serverless first paradigm utilizing AWS Lambda and HTTP APIs.",
-      "Use Amazon RDS Proxy to prevent database connection limits from running thin on high Lambda scale.",
-      "Translate DataWeave scripts to standard JavaScript Map functions inside Lambda."
-    ],
+    risks: derived.risks,
+    recommendations: derived.recommendations,
     migrationComplexity: complexity,
     estimatedEffort: complexity === "HIGH" ? "8-12 Weeks" : complexity === "MEDIUM" ? "4-6 Weeks" : "2-3 Weeks",
     architectureDiagram: DEFAULT_MERMAID_DIAGRAM
   };
+
+  result.debug = {
+    extractedMetadata: evidence,
+    aiPrompt: "Parser-Only Mode: Metadata-driven rule engine applied. No AI API keys or prompt sent.",
+    aiResponse: JSON.stringify({
+      executiveSummary: derived.executiveSummary,
+      risks: derived.risks,
+      recommendations: derived.recommendations,
+      businessCapabilities: derived.businessCapabilities
+    }, null, 2)
+  };
+
+  return result;
 }
 
 // Build standard analysis prompt
@@ -196,21 +401,27 @@ function getAnalysisPrompt(files, parsedMetadata) {
   }
   codebaseSnippet = truncateText(codebaseSnippet, 12000);
 
-  return `You are an expert MuleSoft and AWS migration architect. Analyze the provided MuleSoft project metadata and source snippets. Identify business capabilities, API-led architecture layers, flow dependencies, transformations, external systems, error handling, and security. Then recommend an AWS-native target architecture using API Gateway, Lambda, SQS, EventBridge, DynamoDB, Cognito, CloudWatch, Step Functions, and S3 where appropriate. Return structured JSON only.
+  const evidence = parsedMetadata.evidence || {};
+
+  return `You are a MuleSoft and AWS migration architect. Analyze the provided codebase files and the extracted metadata.
+Your executive summary, risks, recommendations, and business capabilities MUST be based strictly on the discovered components in the 'evidence' object.
+Do NOT mention target services like DynamoDB, SQS, or EventBridge unless their respective source components (Object Store, MQ/VM, Schedulers) are present in the evidence.
+Do NOT output template-driven or generic AWS boilerplate. Build custom risks for each detected component (e.g. DataWeave requires JS translation, database connection pool concerns for RDS, scheduler to EventBridge mapping). Only show a risk if its component is detected.
+Return structured JSON only.
 
 Codebase source snippets:
 ${codebaseSnippet}
 
-Parsed technical metadata:
-${JSON.stringify(parsedMetadata, null, 2)}
+Extracted repository evidence metadata:
+${JSON.stringify(evidence, null, 2)}
 
 Return a structured JSON object strictly matching this schema:
 {
-  "executiveSummary": "A concise executive explanation of the API, its business value, and target AWS architecture.",
+  "executiveSummary": "A concise executive explanation of the API, its business value, and target AWS architecture, based ONLY on the evidence.",
   "businessCapabilities": [
     {
-      "capability": "Business Capability Name",
-      "description": "Detailed explanation of what business logic it covers"
+      "capability": "Business Capability Name (e.g. Customer Management or Order Processing)",
+      "description": "Detailed explanation of what business logic it covers based strictly on repository evidence"
     }
   ],
   "apis": [
@@ -274,10 +485,10 @@ Return a structured JSON object strictly matching this schema:
     }
   ],
   "risks": [
-    "Specific risks associated with converting this flow/system to AWS"
+    "Specific risks associated with converting this flow/system to AWS (only if supported by evidence)"
   ],
   "recommendations": [
-    "AWS-native architectural recommendations specific to this codebase"
+    "AWS-native architectural recommendations specific to this codebase (only if supported by evidence)"
   ],
   "migrationComplexity": "LOW / MEDIUM / HIGH",
   "estimatedEffort": "e.g. 3-4 Weeks developer effort (includes design, conversion, and validation)",
@@ -287,6 +498,9 @@ Return a structured JSON object strictly matching this schema:
 
 // 2. OpenAI Analysis
 export async function openAiAnalyze(files, parsedMetadata, providerInfo) {
+  if (parsedMetadata && parsedMetadata.isMuleProject === false) {
+    return parserOnlyAnalyze(files, parsedMetadata);
+  }
   if (!providerInfo.apiKey) {
     return parserOnlyAnalyze(files, parsedMetadata);
   }
@@ -313,6 +527,11 @@ export async function openAiAnalyze(files, parsedMetadata, providerInfo) {
     if (!parsed.architectureDiagram) {
       parsed.architectureDiagram = DEFAULT_MERMAID_DIAGRAM;
     }
+    parsed.debug = {
+      extractedMetadata: parsedMetadata.evidence || parsedMetadata,
+      aiPrompt: prompt,
+      aiResponse: rawResponse
+    };
     return parsed;
   } catch (err) {
     console.error("[OpenAI Analyze] Failed. Falling back to parserOnly.", err);
@@ -322,6 +541,9 @@ export async function openAiAnalyze(files, parsedMetadata, providerInfo) {
 
 // 3. Gemini Analysis
 export async function geminiAnalyze(files, parsedMetadata, providerInfo) {
+  if (parsedMetadata && parsedMetadata.isMuleProject === false) {
+    return parserOnlyAnalyze(files, parsedMetadata);
+  }
   if (!providerInfo.apiKey) {
     return parserOnlyAnalyze(files, parsedMetadata);
   }
@@ -347,6 +569,11 @@ export async function geminiAnalyze(files, parsedMetadata, providerInfo) {
     if (!parsed.architectureDiagram) {
       parsed.architectureDiagram = DEFAULT_MERMAID_DIAGRAM;
     }
+    parsed.debug = {
+      extractedMetadata: parsedMetadata.evidence || parsedMetadata,
+      aiPrompt: prompt,
+      aiResponse: text
+    };
     return parsed;
   } catch (err) {
     console.error("[Gemini Analyze] Failed. Falling back to parserOnly.", err);
@@ -484,22 +711,19 @@ ${JSON.stringify(parsedMetadata, null, 2)}
 AWS Mappings:
 ${JSON.stringify(awsMapping, null, 2)}
 
-The report MUST contain exactly these 15 sections in order:
+The report MUST contain exactly these 12 sections in order:
 1. Executive Summary
-2. Current MuleSoft Landscape
-3. API Inventory
-4. Experience / Process / System API Mapping
-5. Flow-by-Flow Functional Analysis
+2. Business View
+3. Technical View
+4. API-led Connectivity
+5. Endpoint Dependency Matrix
 6. DataWeave Transformation Summary
-7. External System Dependencies
-8. Security and Policy Analysis
-9. Error Handling Analysis
-10. AWS Target Architecture
-11. MuleSoft to AWS Component Mapping
-12. Migration Complexity
-13. Risks and Assumptions
-14. Recommended Migration Phases
-15. Estimated Effort
+7. External System Inventory
+8. Error Handling
+9. Security/Policies
+10. Migration Recommendation
+11. AWS Target Architecture
+12. Assumptions and Gaps
 
 Include specific details about the endpoints, flows, and DB/MQ integrations discovered in the metadata. Return the markdown text directly.`;
 
@@ -678,76 +902,172 @@ function getFallbackBlueprint(metadata, errMessage = "") {
 // Fallback Report helper
 function getFallbackReport(metadata, awsMapping, errMessage = "") {
   const metrics = metadata?.metrics || {};
-  let mappingRows = "";
-  for (const m of (awsMapping || [])) {
-    mappingRows += `| **${m.muleComponent}** | *${m.muleType}* | **${m.awsService}** | ${m.rationale} |\n`;
-  }
+  const isMule = metadata?.isMuleProject !== false;
 
-  return `# MuleSoft to AWS Migration Analysis Report
-*(Generated in Fallback Mode ${errMessage ? `due to error: ${errMessage}` : "due to unconfigured AI key"})*
+  if (!isMule) {
+    return `# MuleSoft to AWS Migration Report
 
 ## 1. Executive Summary
-This report analyzes the MuleSoft application components and compiles an automated mapping strategy to convert the implementation into AWS-native serverless microservices.
+This repository does not appear to be a MuleSoft application. No MuleSoft configuration XML files, RAML/OAS API definitions, or DataWeave scripts were detected in the source repository files.
 
-## 2. Current MuleSoft Landscape
-A technical breakdown of flows, subflows, connectors, and configuration properties.
-- **Total Flows**: ${metrics.totalFlows || 0}
-- **Total Subflows**: ${metrics.totalSubflows || 0}
-- **Complexity assessed**: ${metrics.complexityScore || "LOW"}
+## 2. Business View
+No business capabilities or exposed endpoints were discovered because this codebase is not recognized as a MuleSoft application.
 
-## 3. API Inventory
-List of REST endpoint paths and methods resolved from Mule source code.
-${(metadata?.endpoints || []).map(e => `- \`${e.methods.join(", ")}\` : \`${e.path}\``).join("\n") || "- No endpoints detected."}
+## 3. Technical View
+- **Mule XML Files**: 0
+- **RAML/YAML Files**: 0
+- **DataWeave Files**: 0
+- **Properties Files**: 0
+- **Components Found**: None
 
-## 4. Experience / Process / System API Mapping
-API-led integration structure maps:
-- Experience layer -> API Gateway routing entries.
-- Process layer -> Compute lambda orchestration handlers.
-- System layer -> Direct database or messaging system adapters.
+## 4. API-led Connectivity
+No API-led architecture layers could be determined.
 
-## 5. Flow-by-Flow Functional Analysis
-Detailed functional audit for all parsed flows:
-${(metadata?.flows || []).map(f => `- **${f.name}**: Flow contains ${f.processors.length} processors, including: ${f.processors.map(p => p.type).join(", ") || "none"}`).join("\n")}
+## 5. Endpoint Dependency Matrix
+No dependencies found.
 
 ## 6. DataWeave Transformation Summary
-Conversion summary of DataWeave mapping scripts. Found ${metrics.totalDwlFiles || 0} DWL scripts. Suggested implementation: Native Node.js JS functions.
+No transformations discovered.
 
-## 7. External System Dependencies
-Interactions mapped to target storage grids or external messaging hubs:
-${(metadata?.externalSystems || []).map(sys => `- **${sys}** -> Amazon target connector service.`).join("\n") || "- No external systems resolved."}
+## 7. External System Inventory
+No external systems connected.
 
-## 8. Security and Policy Analysis
-MuleSoft API Gateway client policies mapped to AWS equivalents (Cognito User Pools, JWT verification, and WAF protection rules).
+## 8. Error Handling
+No error handlers detected.
 
-## 9. Error Handling Analysis
-Mule error handlers mapped to Lambda standard JavaScript native try-catch structures and failed message SQS DLQ redrive policies.
+## 9. Security/Policies
+No security configuration detected.
 
-## 10. AWS Target Architecture
-An event-driven serverless ecosystem utilizing AWS Gateway, Lambda compute, DynamoDB caching, SQS queues, and RDS Aurora storage.
+## 10. Migration Recommendation
+N/A - This repository does not contain MuleSoft application structures.
 
-## 11. MuleSoft to AWS Component Mapping
-Below is the direct translation mapping computed from the XML source parse tree:
+## 11. AWS Target Architecture
+N/A - No target architecture recommended.
 
-| MuleSoft Source Component | Component Type | Target AWS Service | Architecture Rationale |
-|---|---|---|---|
-${mappingRows || "| No mappings found | | | |"}
+## 12. Assumptions and Gaps
+- **Assumptions**: Code base is a non-Mule project.
+- **Gaps**: No Mule code found.`;
+  }
 
-## 12. Migration Complexity
-- **Overall Score**: ${metrics.score || 0}
-- **Complexity Assessment**: **${metrics.complexityScore || "LOW"}**
+  const flows = metadata?.flows || [];
+  const subflows = metadata?.subflows || [];
+  const apis = metadata?.endpoints || [];
+  const connectors = metadata?.connectors || [];
+  const externalSystems = metadata?.externalSystems || [];
+  const properties = metadata?.properties || {};
+  const files = metadata?.files || {};
 
-## 13. Risks and Assumptions
-- Assumes target AWS CLI permissions and CLI deployment frameworks are pre-configured.
-- Relies on testing custom JS transformation alternatives manually to match complex DataWeave mappings.
+  let mappingRows = "";
+  for (const m of (awsMapping || [])) {
+    mappingRows += `| **${m.muleComponent}** | **${m.awsService}** | ${m.rationale} | **${m.awsType || "Compute"}** |\n`;
+  }
 
-## 14. Recommended Migration Phases
-- Phase 1: Ingress API Gateway route setups.
-- Phase 2: Lambda function handler conversions and environment configuration settings.
-- Phase 3: Database schema migrations and SQS queue setups.
-- Phase 4: Integration testing, CI/CD setup, and cutover validation.
+  // Segment flows into triggers
+  const entryPoints = [];
+  const internalOrchestrations = [];
+  for (const f of flows) {
+    const hasHttpListener = f.processors.some(p => p.type === 'http-listener');
+    const hasScheduler = f.processors.some(p => p.type === 'scheduler');
+    const hasQueueListener = f.processors.some(p => p.type.includes('mq') || f.name.toLowerCase().includes('queue') || f.name.toLowerCase().includes('listener'));
+    if (hasHttpListener || hasScheduler || hasQueueListener) {
+      let t = "Event";
+      if (hasHttpListener) t = "HTTP Listener";
+      else if (hasScheduler) t = "Scheduler";
+      else if (hasQueueListener) t = "Queue / MQ";
+      entryPoints.push({ name: f.name, type: t, file: f.file });
+    } else {
+      internalOrchestrations.push(f);
+    }
+  }
 
-## 15. Estimated Effort
-Estimated developer time to execute and validate migration: **${metrics.complexityScore === "HIGH" ? "8-12 Weeks" : metrics.complexityScore === "MEDIUM" ? "4-6 Weeks" : "2-3 Weeks"}**.`;
+  const generatedModeText = errMessage ? ("due to error: " + errMessage) : "due to unconfigured AI key";
+  const apiLines = apis.map(e => "  - `" + e.methods.join(", ") + "` `" + e.path + "` - " + (e.description || "API Route")).join("\n") || "  - None explicitly defined in RAML.";
+  const triggerLines = entryPoints.map(ep => "  - **" + ep.name + "**: Activated by **" + ep.type + "** trigger.").join("\n") || "  - None detected.";
+  const systemLines = externalSystems.map(sys => "  - Calls downstream system: **" + sys + "**").join("\n") || "  - No downstream external systems detected.";
+  const flowLines = flows.map(f => "  - `Flow`: **" + f.name + "** (Processors: " + f.processors.length + ", Error Handler: " + (f.hasErrorHandler ? "Yes" : "No") + ")").join("\n");
+  const subflowLines = subflows.map(sf => "  - `Subflow`: **" + sf.name + "** (Processors: " + sf.processors.length + ")").join("\n");
+  const externalSystemLines = externalSystems.map(sys => "- **" + sys + "**: Mapped to native AWS target resources (e.g. SQS queues, Aurora RDS tables).").join("\n") || "- No external systems resolved.";
+
+  return `# MuleSoft to AWS Migration Report
+*(Generated in Fallback Mode ${generatedModeText})*
+
+## 1. Executive Summary
+This report analyzes the MuleSoft application components and compiles an automated mapping strategy to convert the implementation into AWS-native serverless microservices. The migration adopts a **Serverless-First** paradigm, swapping heavy ESB runtimes for event-driven, pay-per-use architecture.
+
+## 2. Business View
+The following business capabilities and exposed functionalities were discovered in the repository:
+- **Exposed APIs & Endpoints**:
+${apiLines}
+- **Functional Triggers**:
+${triggerLines}
+- **Downstream Operations**:
+${systemLines}
+
+## 3. Technical View
+A technical breakdown of MuleSoft assets:
+- **File Inventory**:
+  - **Mule XML Files**: ${(files.mule || []).length} files
+  - **RAML/YAML API Specs**: ${(files.raml || []).length} files
+  - **DataWeave (.dwl) Scripts**: ${(files.dwl || []).length} files
+  - **Properties Files**: ${(files.properties || []).length} files
+- **Inventory Metrics**:
+  - **Total Flows**: ${metrics.totalFlows || 0}
+  - **Total Subflows**: ${metrics.totalSubflows || 0}
+  - **Complexity Assessed**: **${metrics.complexityScore || "LOW"}**
+- **Flow Details**:
+${flowLines}
+${subflowLines}
+
+## 4. API-led Connectivity
+Mapped architectural layers based on naming conventions and connectors:
+- **Experience Layer**: Handles external API exposure and HTTP routing. Exposes REST boundaries.
+- **Process Layer**: Handles core orchestration, branching routers, caching logic, and state lookup.
+- **System Layer**: Adapter services containing direct queries to databases or publishes to messaging systems.
+
+## 5. Endpoint Dependency Matrix
+Visual routing chain and call stack identified in this codebase:
+- **Client App** → calling → **Experience API** (HTTP Router)
+- **Experience API** → calling → **Process API** (Orchestrator & Object Store cache)
+- **Process API** → calling → **System API** (Database & MQ Publisher adapters)
+- **System API** → writing/fetching → **Backend Storage Grids / MQ Queue Broker**
+
+## 6. DataWeave Transformation Summary
+There are **${metrics.totalDwlFiles || 0}** DataWeave mapping scripts in the codebase:
+- DWL transformations are used for translating hierarchical request payloads to flat SQL inputs or JSON models.
+- **AWS Target Alternative**: Replaces with standard JavaScript Map/Reduce functions or JSONata template transforms inside Lambda handler helper modules.
+
+## 7. External System Inventory
+Discovered downstream integrations and dependencies:
+${externalSystemLines}
+
+## 8. Error Handling
+- **Flow Level Handlers**: Found ${flows.filter(f => f.hasErrorHandler).length} flow error handler configurations.
+- **AWS Mapping**: Mapped to standard JavaScript try-catch blocks returning custom status code JSON payloads, or SQS Dead Letter Queues (DLQ) for asynchronous event failures.
+
+## 9. Security/Policies
+- **Policies Detected**: Client ID Enforcement and security parameters.
+- **AWS Mapping**: Secured using API Gateway API Keys, Cognito JWT Authorizers, or AWS WAF firewall rate-limiting filters.
+
+## 10. Migration Recommendation
+- **Compute Conversion**: Do NOT map every single flow to a separate Lambda function.
+- **Triggers mapping**:
+  - HTTP Listeners → Amazon API Gateway HTTP routes + Lambda handlers.
+  - Schedulers → EventBridge Scheduled Rules + Lambda triggers.
+  - Queue listeners → Amazon SQS Queue Event triggers + Lambda.
+- **Subflows mapping**: Reusable subflows must be converted into shared JavaScript modules/functions in the \`src/utils\` directory instead of dedicated compute runtimes.
+- **DWL mapping**: Replaced with utility JS helper functions.
+
+## 11. AWS Target Architecture
+The proposed architecture maps the application to a serverless state:
+- **Amazon API Gateway**: Receives HTTPS REST calls and handles routing boundaries.
+- **AWS Lambda**: Code execution engine (Node.js runtime) representing mapped trigger flows.
+- **Amazon DynamoDB**: Key-value data cache replacing Object Store caches.
+- **Amazon SQS**: Event queues replacing Anypoint MQ or VM queue systems.
+- **Amazon CloudWatch**: Gathers logging statements from Lambda output.
+
+## 12. Assumptions and Gaps
+- **Assumptions**: Mapped resources are deployed in the same AWS region and VPC environment.
+- **Gaps**: DataWeave scripts containing complex custom Java helper methods must be manually refactored to equivalent Node.js libraries.`;
 }
 
 // Fallback Plan helper

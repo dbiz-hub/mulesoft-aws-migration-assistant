@@ -130,6 +130,11 @@ export async function parseMuleXml(xmlContent) {
   try {
     const parser = new xml2js.Parser({ tagNameProcessors: [xml2js.processors.stripPrefix] });
     const result = await parser.parseStringPromise(xmlContent);
+    
+    // Parse without stripping prefixes for exact connector metadata
+    const parserNoStrip = new xml2js.Parser();
+    const resultNoStrip = await parserNoStrip.parseStringPromise(xmlContent);
+
     const muleNode = result?.mule;
 
     if (!muleNode) return null;
@@ -182,7 +187,7 @@ export async function parseMuleXml(xmlContent) {
       }
     }
 
-    return { flows, subflows, globalConfigs };
+    return { flows, subflows, globalConfigs, rawXmlObj: resultNoStrip };
   } catch (error) {
     console.error("XML Parsing Error:", error);
     return null;
@@ -191,14 +196,11 @@ export async function parseMuleXml(xmlContent) {
 
 export function parseRaml(ramlContent) {
   try {
-    // RAML is often written in YAML structure.
-    // If it starts with #%RAML, we can try striping the header and parsing as YAML
     const cleanContent = ramlContent.replace(/^#%RAML[^\n]*/, "");
     const doc = yaml.load(cleanContent);
     
     const endpoints = [];
     
-    // Simple helper to recursively extract endpoints
     function traverse(obj, path = "") {
       if (!obj || typeof obj !== "object") return;
       
@@ -206,7 +208,6 @@ export function parseRaml(ramlContent) {
         if (key.startsWith("/")) {
           const currentPath = path + key;
           
-          // Find methods
           const methods = [];
           for (const innerKey of Object.keys(obj[key])) {
             if (["get", "post", "put", "delete", "patch", "options"].includes(innerKey.toLowerCase())) {
@@ -229,7 +230,6 @@ export function parseRaml(ramlContent) {
     return { title: doc.title || "Mule API", version: doc.version || "1.0", endpoints };
   } catch (e) {
     console.error("Failed to parse RAML:", e);
-    // Return simple text-based fallback
     return { title: "API Spec", version: "unknown", endpoints: [] };
   }
 }
@@ -237,10 +237,8 @@ export function parseRaml(ramlContent) {
 export function parseProperties(content) {
   const properties = {};
   try {
-    // Try as YAML first
     const doc = yaml.load(content);
     if (doc && typeof doc === "object") {
-      // Flatten YAML properties
       function flatten(obj, prefix = "") {
         for (const k of Object.keys(obj)) {
           const val = obj[k];
@@ -256,10 +254,9 @@ export function parseProperties(content) {
       return properties;
     }
   } catch (e) {
-    // Fallback to standard properties parsing (key=value)
+    // Fallback
   }
 
-  // Key=Value parsing
   const lines = content.split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
@@ -271,6 +268,187 @@ export function parseProperties(content) {
     }
   }
   return properties;
+}
+
+// Helper to recursively find and catalog Mule components in un-stripped XML trees
+function findMetadataNodes(obj, evidence, currentFlow = null) {
+  if (!obj || typeof obj !== "object") return;
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      findMetadataNodes(item, evidence, currentFlow);
+    }
+    return;
+  }
+
+  for (const key of Object.keys(obj)) {
+    const cleanKey = key.split(":").pop();
+    const element = obj[key];
+
+    let nextFlow = currentFlow;
+    if (cleanKey === "flow" || cleanKey === "sub-flow") {
+      const name = element[0]?.$?.name || "unnamed";
+      nextFlow = name;
+      if (cleanKey === "flow") {
+        if (!evidence.flows.includes(name)) evidence.flows.push(name);
+      } else {
+        if (!evidence.subflows.includes(name)) evidence.subflows.push(name);
+      }
+    }
+
+    // HTTP Listener
+    if (cleanKey === "listener" && key.startsWith("http:")) {
+      const details = element[0]?.$;
+      evidence.httpListeners.push({
+        path: details?.path || "/",
+        method: details?.allowedMethods || "ALL",
+        configRef: details?.["config-ref"] || "",
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("HTTP Listener")) {
+        evidence.connectors.push("HTTP Listener");
+      }
+    }
+
+    // Scheduler
+    if (cleanKey === "scheduler") {
+      const scheduleStrategy = element[0]?.["scheduling-strategy"]?.[0];
+      let detailsText = "Scheduled";
+      if (scheduleStrategy?.["fixed-frequency"]) {
+        const freq = scheduleStrategy["fixed-frequency"][0]?.$;
+        detailsText = `Fixed Frequency: ${freq?.frequency} ${freq?.timeUnit}`;
+      } else if (scheduleStrategy?.cron) {
+        const cron = scheduleStrategy.cron[0]?.$;
+        detailsText = `Cron: ${cron?.expression}`;
+      }
+      evidence.schedulers.push({
+        name: element[0]?.$?.doc_name || element[0]?.$?.name || "Scheduler",
+        schedule: detailsText,
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("Scheduler")) {
+        evidence.connectors.push("Scheduler");
+      }
+    }
+
+    // DataWeave / Transform
+    if ((cleanKey === "transform" || cleanKey === "transform-message") && key.startsWith("ee:")) {
+      const details = element[0]?.$;
+      let resource = "inline";
+      let inlineCode = "";
+
+      const setPayload = element[0]?.["ee:message"]?.[0]?.["ee:set-payload"]?.[0] || element[0]?.["message"]?.[0]?.["set-payload"]?.[0] || element[0]?.["set-payload"]?.[0];
+      if (setPayload) {
+        if (setPayload.$?.resource) {
+          resource = setPayload.$?.resource;
+        } else if (setPayload._) {
+          inlineCode = setPayload._.trim();
+        }
+      }
+
+      evidence.dataweaves.push({
+        name: details?.doc_name || "Transform Message",
+        resource,
+        inlineCode: inlineCode ? (inlineCode.substring(0, 150) + "...") : null,
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("DataWeave / Transform")) {
+        evidence.connectors.push("DataWeave / Transform");
+      }
+    }
+
+    // Database Connectors
+    if (key.startsWith("db:") && ["select", "insert", "update", "delete", "bulk-insert", "bulk-update", "bulk-delete", "execute-ddl"].includes(cleanKey)) {
+      evidence.databaseConnectors.push({
+        operation: cleanKey,
+        configRef: element[0]?.$?.["config-ref"] || "",
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("Database")) {
+        evidence.connectors.push("Database");
+      }
+    }
+
+    // Salesforce Connectors
+    if (key.startsWith("salesforce:")) {
+      evidence.salesforceConnectors.push({
+        operation: cleanKey,
+        configRef: element[0]?.$?.["config-ref"] || "",
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("Salesforce")) {
+        evidence.connectors.push("Salesforce");
+      }
+    }
+
+    // MQ / VM Messaging Connectors
+    if (key.startsWith("anypoint-mq:") || key.startsWith("vm:") || key.startsWith("jms:")) {
+      const type = key.split(":")[0];
+      evidence.mqConnectors.push({
+        type,
+        operation: cleanKey,
+        destination: element[0]?.$?.destination || element[0]?.$?.queue || "",
+        flow: nextFlow
+      });
+      const connName = type === "anypoint-mq" ? "Anypoint MQ" : (type === "vm" ? "VM Queue" : "JMS Broker");
+      if (!evidence.connectors.includes(connName)) {
+        evidence.connectors.push(connName);
+      }
+    }
+
+    // File System / FTP Connectors
+    if (key.startsWith("file:") || key.startsWith("ftp:") || key.startsWith("sftp:")) {
+      const type = key.split(":")[0];
+      evidence.fileConnectors.push({
+        type,
+        operation: cleanKey,
+        path: element[0]?.$?.path || element[0]?.$?.directory || "",
+        flow: nextFlow
+      });
+      const connName = type === "file" ? "File System" : (type === "ftp" ? "FTP Server" : "SFTP Server");
+      if (!evidence.connectors.includes(connName)) {
+        evidence.connectors.push(connName);
+      }
+    }
+
+    // Object Store
+    if (key.startsWith("os:") && ["store", "retrieve", "clear", "contains", "remove"].includes(cleanKey)) {
+      evidence.objectStoreUsage.push({
+        operation: cleanKey,
+        key: element[0]?.$?.key || "",
+        objectStore: element[0]?.$?.objectStore || "",
+        flow: nextFlow
+      });
+      if (!evidence.connectors.includes("Object Store")) {
+        evidence.connectors.push("Object Store");
+      }
+    }
+
+    // Error Handlers
+    if (cleanKey === "error-handler" || cleanKey === "on-error-propagate" || cleanKey === "on-error-continue") {
+      evidence.errorHandlers.push({
+        type: cleanKey,
+        name: element[0]?.$?.name || element[0]?.$?.doc_name || "Error Scope",
+        typePattern: element[0]?.$?.type || "ALL",
+        flow: nextFlow
+      });
+    }
+
+    // External Endpoint calls (HTTP requests)
+    if (cleanKey === "request" && key.startsWith("http:")) {
+      const details = element[0]?.$;
+      evidence.externalEndpoints.push({
+        path: details?.path || "/",
+        method: details?.method || "GET",
+        configRef: details?.["config-ref"] || "",
+        flow: nextFlow
+      });
+    }
+
+    if (typeof element === "object") {
+      findMetadataNodes(element, evidence, nextFlow);
+    }
+  }
 }
 
 export async function analyzeRepository(files) {
@@ -286,7 +464,6 @@ export async function analyzeRepository(files) {
   let endpoints = [];
   let externalSystems = new Set();
   
-  // Categorized files
   const categorizedFiles = {
     mule: [],
     resources: [],
@@ -295,11 +472,35 @@ export async function analyzeRepository(files) {
     properties: []
   };
 
+  const evidence = {
+    muleXmlFiles: [],
+    flows: [],
+    subflows: [],
+    httpListeners: [],
+    schedulers: [],
+    dataweaves: [],
+    connectors: [],
+    errorHandlers: [],
+    endpoints: [],
+    properties: [],
+    externalEndpoints: [],
+    ramlFiles: [],
+    yamlFiles: [],
+    propertiesFiles: [],
+    databaseConnectors: [],
+    salesforceConnectors: [],
+    mqConnectors: [],
+    fileConnectors: [],
+    objectStoreUsage: []
+  };
+
   for (const filePath of Object.keys(files)) {
     const content = files[filePath];
     
     if (filePath.endsWith(".xml") && (filePath.includes("src/main/mule") || content.includes("<mule"))) {
       categorizedFiles.mule.push(filePath);
+      evidence.muleXmlFiles.push(filePath);
+      
       const parsedXml = await parseMuleXml(content);
       if (parsedXml) {
         totalFlows += parsedXml.flows.length;
@@ -307,7 +508,10 @@ export async function analyzeRepository(files) {
         flowsList.push(...parsedXml.flows.map(f => ({ ...f, file: filePath })));
         subflowsList.push(...parsedXml.subflows.map(sf => ({ ...sf, file: filePath })));
 
-        // Analyze connectors
+        // Run recursive evidence collection
+        findMetadataNodes(parsedXml.rawXmlObj, evidence);
+
+        // Analyze connectors (for backward compatibility metrics)
         for (const config of parsedXml.globalConfigs) {
           if (config.type.includes("listener")) connectorTypes.add("HTTP Listener");
           if (config.type.includes("request")) connectorTypes.add("HTTP Request");
@@ -322,7 +526,6 @@ export async function analyzeRepository(files) {
           if (config.type.includes("os")) connectorTypes.add("Object Store");
         }
 
-        // Check processors inside flows
         for (const f of parsedXml.flows) {
           for (const proc of f.processors) {
             if (proc.type === "database") {
@@ -346,18 +549,47 @@ export async function analyzeRepository(files) {
     } else if (filePath.endsWith(".dwl") || filePath.includes("dwl/")) {
       categorizedFiles.dwl.push(filePath);
       totalDwlFiles++;
+      
+      if (!evidence.dataweaves.some(dw => dw.resource === filePath)) {
+        evidence.dataweaves.push({
+          name: filePath.split("/").pop(),
+          resource: filePath,
+          inlineCode: content ? (content.substring(0, 150) + "...") : null,
+          flow: "External DWL File"
+        });
+        if (!evidence.connectors.includes("DataWeave / Transform")) {
+          evidence.connectors.push("DataWeave / Transform");
+        }
+      }
     } else if (filePath.endsWith(".raml") || filePath.endsWith("openapi.yaml") || filePath.endsWith("openapi.json")) {
       categorizedFiles.raml.push(filePath);
+      if (filePath.endsWith(".raml")) {
+        evidence.ramlFiles.push(filePath);
+      } else {
+        evidence.yamlFiles.push(filePath);
+      }
+      
       const parsedRaml = parseRaml(content);
       if (parsedRaml && parsedRaml.endpoints) {
         endpoints.push(...parsedRaml.endpoints);
+        for (const ep of parsedRaml.endpoints) {
+          evidence.endpoints.push({
+            path: ep.path,
+            methods: ep.methods,
+            description: ep.description || "",
+            file: filePath
+          });
+        }
       }
     } else if (filePath.endsWith(".properties") || filePath.endsWith(".yaml") || filePath.endsWith(".yml")) {
-      // Check if it's in resources/
       if (filePath.includes("src/main/resources")) {
         categorizedFiles.properties.push(filePath);
+        evidence.propertiesFiles.push(filePath);
         const props = parseProperties(content);
         properties = { ...properties, ...props };
+        for (const [k, v] of Object.entries(props)) {
+          evidence.properties.push({ key: k, value: v, file: filePath });
+        }
       } else {
         categorizedFiles.resources.push(filePath);
       }
@@ -365,6 +597,9 @@ export async function analyzeRepository(files) {
       categorizedFiles.resources.push(filePath);
     }
   }
+
+  // Ensure unique connector names in evidence.connectors
+  evidence.connectors = Array.from(new Set(evidence.connectors));
 
   totalConnectors = connectorTypes.size;
 
@@ -377,6 +612,16 @@ export async function analyzeRepository(files) {
   } else {
     complexityScore = "LOW";
   }
+
+  const repos = new Set();
+  for (const filePath of Object.keys(files)) {
+    const parts = filePath.split('/');
+    if (parts.length > 1) {
+      repos.add(parts[0]);
+    }
+  }
+
+  const isMuleProject = categorizedFiles.mule.length > 0 || categorizedFiles.raml.length > 0 || categorizedFiles.dwl.length > 0;
 
   return {
     metrics: {
@@ -393,6 +638,9 @@ export async function analyzeRepository(files) {
     externalSystems: Array.from(externalSystems),
     properties,
     endpoints,
-    files: categorizedFiles
+    files: categorizedFiles,
+    isMuleProject,
+    repos: Array.from(repos),
+    evidence
   };
 }
